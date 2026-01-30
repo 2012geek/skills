@@ -95,7 +95,7 @@ Skills = 可复用的能力模块
 
 [PR #46 - 发现实际问题](https://gitcode.com/openeuler/lerobot_ros2/pull/46)
 
-<img src="../assets/images/83a71edb-ba00-4b99-aed0-f05bcdd6cc78.png" width="800"/>
+<img src="./assets/images/83a71edb-ba00-4b99-aed0-f05bcdd6cc78.png" width="800"/>
 
 ---
 
@@ -104,15 +104,15 @@ Skills = 可复用的能力模块
 [PR #46 - 误报问题](https://gitcode.com/openeuler/lerobot_ros2/pull/46/diffs?file=src%252Ftool%252Ftransfer_model%252Fexport_model.py&version=7&expired=false)
 
 **问题现象**：
-<img src="../assets/images/df287dc9-87df-4d83-ad4f-39a9ef2e980e.png" width="800"/>
+<img src="./assets/images/df287dc9-87df-4d83-ad4f-39a9ef2e980e.png" width="800"/>
 
 **根因定位**：
 Git 只获取了部分修改代码，导致上下文缺失
-<img src="../assets/images/c3aa1161-246c-4443-b145-83ca041d92bf.png" width="800"/>
+<img src="./assets/images/c3aa1161-246c-4443-b145-83ca041d92bf.png" width="800"/>
 
 **解决方案**：
 添加误报机制
-<img src="../assets/images/a4797cbe-b446-4644-abb4-195b193f290f.png" width="800"/>
+<img src="./assets/images/a4797cbe-b446-4644-abb4-195b193f290f.png" width="800"/>
 
 ---
 
@@ -132,15 +132,15 @@ class ACTPolicy(PreTrainedPolicy):
         return len(cls._action_queue) == 0 if hasattr(cls, "_action_queue") else True
 ```
 
-<img src="../assets/images/684b95f9-6926-400c-83aa-86f959a064d3.png" width="400"/>
+<img src="./assets/images/684b95f9-6926-400c-83aa-86f959a064d3.png" width="400"/>
 
 **解决方案**：
 添加专门的 agent 检查类方法问题
-<img src="../assets/images/edbfd903-2250-4521-850d-c1150e9a09ff.png" width="800"/>
+<img src="./assets/images/edbfd903-2250-4521-850d-c1150e9a09ff.png" width="800"/>
 
 #### 🏗️ 系统架构
 
-<img src="../assets/images/57bb395a-f768-422d-a26b-abd1e83ab9fc.png" width="1000"/>
+<img src="./assets/images/57bb395a-f768-422d-a26b-abd1e83ab9fc.png" width="1000"/>
 
 #### ⚠️ 调试过程中的坑
 
@@ -196,9 +196,9 @@ def check_function_length(file_path, max_lines=50):
 **成功案例**：
 [PR #50 - 自动生成](https://gitcode.com/openeuler/lerobot_ros2/pull/50)
 
-<img src="../assets/images/50b68745-5523-4eec-8469-365d0c084046.png" width="800"/>
-<img src="../assets/images/dc0e88d0-565e-42ec-a424-194ac19a711f.png" width="800"/>
-<img src="../assets/images/cc57bc87-7caa-4d6e-bce8-c6441e8c6cde.png" width="800"/>
+<img src="./assets/images/50b68745-5523-4eec-8469-365d0c084046.png" width="800"/>
+<img src="./assets/images/dc0e88d0-565e-42ec-a424-194ac19a711f.png" width="800"/>
+<img src="./assets/images/cc57bc87-7caa-4d6e-bce8-c6441e8c6cde.png" width="800"/>
 
 **特点**：
 - 自动分析代码变更
@@ -207,7 +207,7 @@ def check_function_length(file_path, max_lines=50):
 
 #### 🏗️ 系统架构
 
-<img src="../assets/images/b001a433-df0e-4a8c-9ce7-380078ab86b7.png" width="1000"/>
+<img src="./assets/images/b001a433-df0e-4a8c-9ce7-380078ab86b7.png" width="1000"/>
 
 #### ⚠️ 调试过程中的坑
 
@@ -254,7 +254,7 @@ def check_function_length(file_path, max_lines=50):
 **成功案例**：
 [PR #50 - 门禁自动修复](https://gitcode.com/openeuler/lerobot_ros2/pull/50)
 
-<img src="../assets/images/07713f19-0dba-4270-b2c9-9ef614f0dc6b.png" width="800"/>
+<img src="./assets/images/07713f19-0dba-4270-b2c9-9ef614f0dc6b.png" width="800"/>
 
 **流程**：
 1. 自动修改代码
@@ -303,7 +303,7 @@ Claude 自动使用 Python 包进行页面分析和元素抓取
 **成功案例**：
 [Commit: c30540aa](https://gitcode.com/leningchen_admin/lerobot_ros2/commit/c30540aa24e8d2e0f088646b52d777f630c40b5d)
 
-<img src="../assets/images/f0017b3c-7fb6-4051-a565-6a78c68f406d.png" width="800"/>
+<img src="./assets/images/f0017b3c-7fb6-4051-a565-6a78c68f406d.png" width="800"/>
 
 **功能**：视频转换成图片测试
 
