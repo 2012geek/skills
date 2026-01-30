@@ -1,0 +1,22 @@
+{
+  "githubToken": "ghp_your_github_token_here",
+  "imageProcessing": {
+    "enabled": true,
+    "timeout": 30000,
+    "maxConcurrent": 1,
+    "skipExisting": true
+  },
+  "splitting": {
+    "enabled": true,
+    "maxHeightPercent": 100
+  },
+  "layout": {
+    "enabled": true,
+    "default": "single-col"
+  },
+  "server": {
+    "port": 3030,
+    "host": "0.0.0.0"
+  },
+  "theme": "modern-simple-light"
+}

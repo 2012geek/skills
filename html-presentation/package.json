@@ -1,0 +1,40 @@
+{
+  "name": "html-presentation-skill",
+  "version": "3.0.0",
+  "description": "HTML Presentation Builder - Markdown to reveal.js or Slidev presentations",
+  "main": "scripts/build.js",
+  "scripts": {
+    "build": "node scripts/build.js",
+    "build:reveal": "node scripts/build.js",
+    "build:slidev": "node scripts/build.js --framework slidev",
+    "build:opt": "node scripts/build.js --optimize",
+    "build:opt:full": "node scripts/build.js --optimize --optimize-level full",
+    "dev": "node scripts/serve.js",
+    "dev:slidev": "slidev --port 3030",
+    "dev:opt": "node scripts/build.js --optimize",
+    "dev:opt:full": "node scripts/build.js --optimize --optimize-level full",
+    "optimize": "node scripts/optimizer.js",
+    "optimize:basic": "node scripts/optimizer.js --level basic",
+    "optimize:full": "node scripts/optimizer.js --level full"
+  },
+  "keywords": [
+    "presentation",
+    "reveal.js",
+    "slidev",
+    "markdown",
+    "slides",
+    "pptx",
+    "vue"
+  ],
+  "author": "Claude Code",
+  "license": "MIT",
+  "dependencies": {
+    "marked": "^11.2.0",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@slidev/cli": "^0.49.29",
+    "@slidev/theme-default": "latest",
+    "@slidev/theme-seriph": "^0.25.0"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "name": "gitcode-code-review-repair",
+  "version": "1.0.0",
+  "description": "Automatically repair GitCode PR review comments using LLM to generate fixes",
+  "main": "scripts/repair-pr.js",
+  "scripts": {
+    "repair": "node scripts/repair-pr.js"
+  },
+  "keywords": [
+    "gitcode",
+    "code-review",
+    "repair",
+    "fix",
+    "automation",
+    "llm",
+    "claude"
+  ],
+  "author": "Claude Code",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "puppeteer": "^23.11.1",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

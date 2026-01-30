@@ -1,0 +1,21 @@
+# Node modules
+node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment files
+.env
+.env.local
+
+# Claude local settings (per-user configuration)
+.claude/*.local.md
+
+# Temporary files
+*.tmp
+.temp-*
+
+# OS files
+.DS_Store
+Thumbs.db
