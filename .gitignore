@@ -1,1 +1,30 @@
-ralph-loop/
+# Debug files
+debug_*.png
+debug_*.jpg
+
+# Skill files (Claude Code internal)
+*.skill
+
+# Temporary diagram iterations
+gitcode-*.svg
+gitcode-pr.svg
+
+# Fix scripts (temporary)
+fix-*.js
+fix-*.py
+fix-*.sh
+
+# Plan documents (temporary)
+PLAN-*.md
+
+# Node modules
+node_modules/
+
+# Build outputs
+dist/
+build/
+*.log
+
+# Slidev temp files
+.slidev-temp/
+*.slidev-temp*.md
