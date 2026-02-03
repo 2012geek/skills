@@ -28,3 +28,7 @@ build/
 # Slidev temp files
 .slidev-temp/
 *.slidev-temp*.md
+
+# Additional debug files
+*.diagram.html
+*.optimized.md
