@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>GitCode CI Repair - D2 Diagram</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
+        h1 { color: #333; }
+        .d2-code { background: #f8f8f8; border: 1px solid #ddd; padding: 15px; border-radius: 4px; overflow-x: auto; }
+        .instructions { background: #e3f2fd; padding: 15px; border-radius: 4px; margin: 20px 0; }
+        pre { margin: 0; }
+        code { font-family: 'Courier New', monospace; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>GitCode CI Repair - Architecture Diagram (D2 Format)</h1>
+
+        <div class="instructions">
+            <h3>📋 To Render This Diagram:</h3>
+            <ol>
+                <li>Copy the D2 code below</li>
+                <li>Visit <a href="https://play.d2lang.com/" target="_blank">https://play.d2lang.com/</a></li>
+                <li>Paste the code into the editor</li>
+                <li>Download as SVG or PNG</li>
+            </ol>
+        </div>
+
+        <h2>D2 Source Code:</h2>
+        <div class="d2-code">
+            <pre><code># GitCode CI Auto-Repair
+# Automated CI failure repair tool for GitCode merge requests. Iteratively analyzes CI failures, generates fixes, and retests until all checks pass.
+
+user: User {
+  shape: person
+}
+sys0: GitCode Platform {
+  style: { fill: #85bbf0 stroke: #438dd5 }
+}
+cont1: CI Repair Script {
+  style: { fill: #438dd5 stroke: #1168bd }
+}
+cont2: GitCode API Client {
+  style: { fill: #438dd5 stroke: #1168bd }
+}
+comp3: Repair Workflow {
+  style: { fill: #85bbf0 stroke: #438dd5 }
+}
+comp4: CI Comment Parser {
+  style: { fill: #85bbf0 stroke: #438dd5 }
+}
+comp5: Fix Generator {
+  style: { fill: #85bbf0 stroke: #438dd5 }
+}
+comp6: Git Operations {
+  style: { fill: #85bbf0 stroke: #438dd5 }
+}
+
+user -> cont1: Initiates repair with MR number/URL
+cont1 -> cont2: Queries PR status and labels
+cont1 -> comp4: Parses bot failure comments
+cont1 -> comp5: Generates remediation strategies
+cont1 -> comp6: Amends and pushes fixes
+cont2 -> sys0: Authenticated REST API calls
+comp6 -> sys0: Force push amended commits</code></pre>
+        </div>
+
+        <h2>Architecture Summary:</h2>
+        <ul>
+            <li><strong>8 Elements:</strong> 1 Person, 1 Software System, 2 Containers, 4 Components</li>
+            <li><strong>7 Relationships:</strong> Shows the complete CI repair workflow</li>
+            <li><strong>Workflow:</strong> User → CI Repair Script → (API Client, Parser, Generator, Git Ops) → GitCode Platform</li>
+        </ul>
+    </div>
+</body>
+</html>

@@ -1,8 +1,9 @@
+import { CharacterClassifier } from '../core/characterClassifier.js';
+
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-import { CharacterClassifier } from '../core/characterClassifier.js';
 class Uint8Matrix {
     constructor(rows, cols, defaultValue) {
         const data = new Uint8Array(rows * cols);
@@ -20,7 +21,7 @@ class Uint8Matrix {
         this._data[row * this.cols + col] = value;
     }
 }
-export class StateMachine {
+class StateMachine {
     constructor(edges) {
         let maxCharCode = 0;
         let maxState = 0 /* State.Invalid */;
@@ -89,7 +90,7 @@ function getClassifier() {
     if (_classifier === null) {
         _classifier = new CharacterClassifier(0 /* CharacterClass.None */);
         // allow-any-unicode-next-line
-        const FORCE_TERMINATION_CHARACTERS = ' \t<>\'\"、。｡､，．：；‘〈「『〔（［｛｢｣｝］）〕』」〉’｀～…';
+        const FORCE_TERMINATION_CHARACTERS = ' \t<>\'\"、。｡､，．：；‘〈「『〔（［｛｢｣｝］）〕』」〉’｀～…|';
         for (let i = 0; i < FORCE_TERMINATION_CHARACTERS.length; i++) {
             _classifier.set(FORCE_TERMINATION_CHARACTERS.charCodeAt(i), 1 /* CharacterClass.ForceTermination */);
         }
@@ -100,7 +101,7 @@ function getClassifier() {
     }
     return _classifier;
 }
-export class LinkComputer {
+class LinkComputer {
     static _createLink(classifier, line, lineNumber, linkBeginIndex, linkEndIndex) {
         // Do not allow to end link in certain characters...
         let lastIncludedCharIndex = linkEndIndex - 1;
@@ -197,10 +198,6 @@ export class LinkComputer {
                             // `*` terminates a link if the link began with `*`
                             chClass = (linkBeginChCode === 42 /* CharCode.Asterisk */) ? 1 /* CharacterClass.ForceTermination */ : 0 /* CharacterClass.None */;
                             break;
-                        case 124 /* CharCode.Pipe */:
-                            // `|` terminates a link if the link began with `|`
-                            chClass = (linkBeginChCode === 124 /* CharCode.Pipe */) ? 1 /* CharacterClass.ForceTermination */ : 0 /* CharacterClass.None */;
-                            break;
                         case 32 /* CharCode.Space */:
                             // ` ` allow space in between [ and ]
                             chClass = (inSquareBrackets ? 0 /* CharacterClass.None */ : 1 /* CharacterClass.ForceTermination */);
@@ -261,10 +258,12 @@ export class LinkComputer {
  * document. *Note* that this operation is computational
  * expensive and should not run in the UI thread.
  */
-export function computeLinks(model) {
+function computeLinks(model) {
     if (!model || typeof model.getLineCount !== 'function' || typeof model.getLineContent !== 'function') {
         // Unknown caller!
         return [];
     }
     return LinkComputer.computeLinks(model);
 }
+
+export { LinkComputer, StateMachine, computeLinks };

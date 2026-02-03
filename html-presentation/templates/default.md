@@ -1,15 +1,15 @@
 # 演示文稿标题
 
-**由 Claude Code 创建** - *使用 reveal.js 框架*
+**由 Claude Code 创建** - *使用 Slidev 框架*
 
 ---
 
 ## 功能特性
 
 - ✅ **Markdown 编写** - 简单直观
-- ✅ **代码高亮** - 支持多种语言
-- ✅ **侧边栏导航** - 可拖拽调整
-- ✅ **PPTX 导出** - 一键导出
+- ✅ **代码高亮** - Shiki 语法高亮
+- ✅ **Dev 模式** - 实时预览，完整工具栏
+- ✅ **Vue 组件** - 完整支持
 
 ---
 
@@ -73,8 +73,11 @@ print(greet("Claude"))
 ```
 
 ```bash
-# 构建演示文稿
+# Dev 模式预览
 node skills/html-presentation/scripts/build.js slides.md
+
+# 构建静态 HTML
+node skills/html-presentation/scripts/build.js slides.md output.html --mode build
 ```
 
 ---

@@ -1,9 +1,9 @@
-import { createMatches as createFuzzyMatches, fuzzyScore } from './filters.js';
+import { fuzzyScore, createMatches } from './filters.js';
 import { sep } from './path.js';
 import { isWindows } from './platform.js';
-import { stripWildcards } from './strings.js';
+
 const NO_SCORE2 = [undefined, []];
-export function scoreFuzzy2(target, query, patternStart = 0, wordStart = 0) {
+function scoreFuzzy2(target, query, patternStart = 0, wordStart = 0) {
     // Score: multiple inputs
     const preparedQuery = query;
     if (preparedQuery.values && preparedQuery.values.length > 1) {
@@ -34,9 +34,8 @@ function doScoreFuzzy2Single(target, query, patternStart, wordStart) {
     if (!score) {
         return NO_SCORE2;
     }
-    return [score[0], createFuzzyMatches(score)];
+    return [score[0], createMatches(score)];
 }
-const NO_ITEM_SCORE = Object.freeze({ score: 0 });
 function normalizeMatches(matches) {
     // sort matches by start to be able to normalize
     const sortedMatches = matches.sort((matchA, matchB) => {
@@ -82,7 +81,7 @@ function queryExpectsExactMatch(query) {
  * and allowing to score on multiple pieces separated by whitespace character.
  */
 const MULTIPLE_QUERY_VALUES_SEPARATOR = ' ';
-export function prepareQuery(original) {
+function prepareQuery(original) {
     if (typeof original !== 'string') {
         original = '';
     }
@@ -121,18 +120,24 @@ function normalizeQuery(original) {
     else {
         pathNormalized = original.replace(/\\/g, sep); // Help macOS/Linux users to search for paths when using backslash
     }
-    // we remove quotes here because quotes are used for exact match search
-    const normalized = stripWildcards(pathNormalized).replace(/\s|"/g, '');
+    // remove certain characters that help find better results:
+    // - quotes: are used for exact match search
+    // - wildcards: are used for fuzzy matching
+    // - whitespace: are used to separate queries
+    // - ellipsis: sometimes used to indicate any path segments
+    const normalized = pathNormalized.replace(/[\*\u2026\s"]/g, '');
     return {
         pathNormalized,
         normalized,
         normalizedLowercase: normalized.toLowerCase()
     };
 }
-export function pieceToQuery(arg1) {
+function pieceToQuery(arg1) {
     if (Array.isArray(arg1)) {
         return prepareQuery(arg1.map(piece => piece.original).join(MULTIPLE_QUERY_VALUES_SEPARATOR));
     }
     return prepareQuery(arg1.original);
 }
 //#endregion
+
+export { pieceToQuery, prepareQuery, scoreFuzzy2 };

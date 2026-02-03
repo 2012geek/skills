@@ -1,0 +1,27 @@
+# Requirements for arch-diagram skill
+# Install with: pip install -r requirements.txt
+
+# ============================================================================
+# PRIMARY WORKFLOW (D2 CLI)
+# ============================================================================
+# The D2-based workflow requires NO Python packages - only D2 CLI is needed.
+#
+# Install D2 CLI:
+#   macOS:   brew install d2
+#   Linux:   wget https://github.com/terrastruct/d2/releases/download/v0.7.1/d2-v0.7.1-linux-amd64.tar.gz -O /tmp/d2.tar.gz
+#            tar -xzf /tmp/d2.tar.gz -C /tmp && sudo cp /tmp/d2-v0.7.1/bin/d2 /usr/local/bin/d2
+#   Windows: https://d2lang.com/tour/install/
+#
+# Verify installation:
+#   d2 --version
+
+# ============================================================================
+# DEPRECATED WORKFLOW (Browser Automation)
+# ============================================================================
+# The following package is only needed for the deprecated Playwright-based
+# rendering approach, which is no longer recommended due to Cloudflare
+# protection on the Structurizr Playground website.
+#
+# To use deprecated scripts (render_svg_playwright.py, render_svg.py):
+#   pip install playwright>=1.40.0
+#   playwright install chromium

@@ -1,16 +1,14 @@
 {
-  "name": "html-presentation-skill",
-  "version": "3.0.0",
-  "description": "HTML Presentation Builder - Markdown to reveal.js or Slidev presentations",
+  "name": "slidev-presentation-skill",
+  "version": "4.0.0",
+  "description": "Slidev Presentation Builder - Markdown to Slidev presentations with dev mode and LLM optimization",
   "main": "scripts/build.js",
   "scripts": {
     "build": "node scripts/build.js",
-    "build:reveal": "node scripts/build.js",
-    "build:slidev": "node scripts/build.js --framework slidev",
+    "build:slidev": "node scripts/build.js",
     "build:opt": "node scripts/build.js --optimize",
     "build:opt:full": "node scripts/build.js --optimize --optimize-level full",
-    "dev": "node scripts/serve.js",
-    "dev:slidev": "slidev --port 3030",
+    "dev": "node scripts/build.js",
     "dev:opt": "node scripts/build.js --optimize",
     "dev:opt:full": "node scripts/build.js --optimize --optimize-level full",
     "optimize": "node scripts/optimizer.js",
@@ -19,21 +17,19 @@
   },
   "keywords": [
     "presentation",
-    "reveal.js",
     "slidev",
     "markdown",
     "slides",
-    "pptx",
     "vue"
   ],
   "author": "Claude Code",
   "license": "MIT",
   "dependencies": {
-    "marked": "^11.2.0",
-    "js-yaml": "^4.1.0"
+    "js-yaml": "^4.1.0",
+    "marked": "^11.2.0"
   },
   "devDependencies": {
-    "@slidev/cli": "^0.49.29",
+    "@slidev/cli": "^52.11.5",
     "@slidev/theme-default": "latest",
     "@slidev/theme-seriph": "^0.25.0"
   }

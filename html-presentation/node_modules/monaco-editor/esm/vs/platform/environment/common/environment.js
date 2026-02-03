@@ -1,2 +1,5 @@
 import { createDecorator } from '../../instantiation/common/instantiation.js';
-export const IEnvironmentService = createDecorator('environmentService');
+
+const IEnvironmentService = createDecorator('environmentService');
+
+export { IEnvironmentService };

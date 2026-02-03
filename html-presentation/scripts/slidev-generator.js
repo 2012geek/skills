@@ -231,12 +231,12 @@ function compileSlidesToMarkdown(slides) {
     // Separator logic for Slidev:
     // Format: ---[layout: xxx\n]---\n\nContent
     if (index === 0) {
-      // First slide - no leading --- separator
+      // First slide - no leading --- separator (frontmatter already ends with ---)
       // Use 'center' layout for title slides, otherwise use specified layout
       if (isTitleSlide && !slide.layout) {
-        slideMarkdown += `---\nlayout: center\nclass: text-center\n---\n\n`;
+        slideMarkdown += `layout: center\nclass: text-center\n\n`;
       } else if (slide.layout) {
-        slideMarkdown += `---\nlayout: ${slide.layout}\n---\n\n`;
+        slideMarkdown += `layout: ${slide.layout}\n\n`;
       }
     } else {
       // Other slides - always start with ---
@@ -283,15 +283,12 @@ function compileSlidesToMarkdown(slides) {
 // ============================================================================
 
 async function generateSlidevMarkdown(inputPath, outputPath, options = {}) {
-  // Resolve paths relative to project root
-  const scriptDir = __dirname;
-  const baseDir = path.dirname(path.dirname(path.dirname(scriptDir)));
-
+  // Resolve paths relative to current working directory
   let resolvedInputPath;
   if (path.isAbsolute(inputPath)) {
     resolvedInputPath = inputPath;
   } else {
-    resolvedInputPath = path.resolve(baseDir, inputPath);
+    resolvedInputPath = path.resolve(process.cwd(), inputPath);
   }
 
   let resolvedOutputPath;
@@ -299,7 +296,7 @@ async function generateSlidevMarkdown(inputPath, outputPath, options = {}) {
     if (path.isAbsolute(outputPath)) {
       resolvedOutputPath = outputPath;
     } else {
-      resolvedOutputPath = path.resolve(baseDir, outputPath);
+      resolvedOutputPath = path.resolve(process.cwd(), outputPath);
     }
   }
 

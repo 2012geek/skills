@@ -1,29 +1,31 @@
 import { Emitter } from '../../../base/common/event.js';
 import { Disposable, toDisposable } from '../../../base/common/lifecycle.js';
 import { createDecorator } from '../../instantiation/common/instantiation.js';
-import * as platform from '../../registry/common/platform.js';
-import { ColorScheme } from './theme.js';
-export const IThemeService = createDecorator('themeService');
-export function themeColorFromId(id) {
+import { Registry } from '../../registry/common/platform.js';
+import { ThemeTypeSelector, ColorScheme } from './theme.js';
+
+const IThemeService = createDecorator('themeService');
+function themeColorFromId(id) {
     return { id };
 }
-export function getThemeTypeSelector(type) {
+function getThemeTypeSelector(type) {
     switch (type) {
-        case ColorScheme.DARK: return 'vs-dark';
-        case ColorScheme.HIGH_CONTRAST_DARK: return 'hc-black';
-        case ColorScheme.HIGH_CONTRAST_LIGHT: return 'hc-light';
-        default: return 'vs';
+        case ColorScheme.DARK: return ThemeTypeSelector.VS_DARK;
+        case ColorScheme.HIGH_CONTRAST_DARK: return ThemeTypeSelector.HC_BLACK;
+        case ColorScheme.HIGH_CONTRAST_LIGHT: return ThemeTypeSelector.HC_LIGHT;
+        default: return ThemeTypeSelector.VS;
     }
 }
 // static theming participant
-export const Extensions = {
+const Extensions = {
     ThemingContribution: 'base.contributions.theming'
 };
-class ThemingRegistry {
+class ThemingRegistry extends Disposable {
     constructor() {
+        super();
         this.themingParticipants = [];
         this.themingParticipants = [];
-        this.onThemingParticipantAddedEmitter = new Emitter();
+        this.onThemingParticipantAddedEmitter = this._register(new Emitter());
     }
     onColorThemeChange(participant) {
         this.themingParticipants.push(participant);
@@ -38,14 +40,14 @@ class ThemingRegistry {
     }
 }
 const themingRegistry = new ThemingRegistry();
-platform.Registry.add(Extensions.ThemingContribution, themingRegistry);
-export function registerThemingParticipant(participant) {
+Registry.add(Extensions.ThemingContribution, themingRegistry);
+function registerThemingParticipant(participant) {
     return themingRegistry.onColorThemeChange(participant);
 }
 /**
  * Utility base class for all themable components.
  */
-export class Themable extends Disposable {
+class Themable extends Disposable {
     constructor(themeService) {
         super();
         this.themeService = themeService;
@@ -61,3 +63,5 @@ export class Themable extends Disposable {
         // Subclasses to override
     }
 }
+
+export { Extensions, IThemeService, Themable, getThemeTypeSelector, registerThemingParticipant, themeColorFromId };

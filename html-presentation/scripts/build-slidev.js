@@ -1,194 +1,14 @@
 #!/usr/bin/env node
 
 /**
- * HTML Presentation Builder - Slidev Backend
+ * Slidev Presentation Builder
  * Converts Markdown to Slidev presentation
- * @version 3.1.0 - Slidev integration with content splitting
+ * @version 4.0.0 - Slidev-only (Reveal.js removed)
  */
 
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
-const { marked } = require('marked');
-const { SlideOptimizer } = require('../lib/slide-optimizer.js');
-
-// ============================================================================
-// CONTENT SPLITTING (ported from build-reveal.js)
-// ============================================================================
-
-function countContentLines(content) {
-  const html = marked.parse(content);
-  const significantTags = html.match(/<(h[1-6]|p|li|pre|table|blockquote|td|th|div[^>]*class="code)/g);
-  return significantTags ? significantTags.length : 0;
-}
-
-function needsSplit(content) {
-  const lines = countContentLines(content);
-  const textLength = content.length;
-  return lines > 20 || textLength > 3000;
-}
-
-function splitLongContent(content, title) {
-  const lines = content.split('\n');
-  const slides = [];
-  let currentSlide = '';
-  let currentElementCount = 0;
-  let inCodeBlock = false;
-  let inList = false;
-  let listItems = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-
-    if (line.trim().startsWith('```')) {
-      inCodeBlock = !inCodeBlock;
-      currentSlide += line + '\n';
-      continue;
-    }
-
-    if (inCodeBlock) {
-      currentSlide += line + '\n';
-      continue;
-    }
-
-    if (line.match(/^\s*[-*+]\s/)) {
-      inList = true;
-      listItems.push(line);
-    } else if (line.match(/^\s*\d+\.\s/)) {
-      inList = true;
-      listItems.push(line);
-    } else if (line.trim() === '' && inList) {
-      inList = false;
-      listItems.push(line);
-
-      if (listItems.length > 15) {
-        const mid = Math.ceil(listItems.length / 2);
-        slides.push(currentSlide + listItems.slice(0, mid).join('\n'));
-        currentSlide = listItems.slice(mid).join('\n');
-        currentElementCount = listItems.length - mid;
-      } else {
-        currentSlide += listItems.join('\n');
-        currentElementCount += listItems.length;
-      }
-      listItems = [];
-      continue;
-    } else if (inList) {
-      listItems.push(line);
-      continue;
-    }
-
-    if (line.match(/^#{1,6}\s/)) {
-      currentElementCount++;
-    } else if (line.match(/^\s*[-*+]\s+/)) {
-      currentElementCount++;
-    } else if (line.match(/^\s*\d+\.\s+/)) {
-      currentElementCount++;
-    } else if (line.trim().length > 0 && !line.match(/^\s*$/)) {
-      currentElementCount += 0.5;
-    }
-
-    currentSlide += line + '\n';
-
-    if (currentElementCount > 15) {
-      slides.push(currentSlide);
-      currentSlide = '';
-      currentElementCount = 0;
-    }
-  }
-
-  if (listItems.length > 0) {
-    currentSlide += listItems.join('\n');
-  }
-
-  if (currentSlide.trim()) {
-    slides.push(currentSlide);
-  }
-
-  if (slides.length === 0) {
-    return [content];
-  }
-
-  return slides.map((slideContent, idx) => {
-    if (idx === 0) return slideContent;
-    return `## ${title} (续)\n\n` + slideContent;
-  });
-}
-
-function parseSlides(markdown) {
-  const lines = markdown.split('\n');
-  const slides = [];
-  let currentSlide = { content: '', title: '', level: 0, index: 0, notes: '' };
-  let slideIndex = 0;
-
-  for (const line of lines) {
-    if (line.match(/^---$/)) {
-      if (currentSlide.content.trim()) {
-        if (needsSplit(currentSlide.content)) {
-          const splitContents = splitLongContent(currentSlide.content, currentSlide.title || '续');
-          splitContents.forEach((content, idx) => {
-            if (idx === 0) {
-              currentSlide.content = content;
-              currentSlide.index = slideIndex++;
-              slides.push(currentSlide);
-            } else {
-              slides.push({
-                content: content,
-                title: currentSlide.title,
-                level: currentSlide.level,
-                index: slideIndex++,
-                notes: ''
-              });
-            }
-          });
-        } else {
-          currentSlide.index = slideIndex++;
-          slides.push(currentSlide);
-        }
-      }
-      currentSlide = { content: '', title: '', level: 0, index: slideIndex, notes: '' };
-    } else if (line.match(/^----$/)) {
-      currentSlide.content += '\n\n' + line + '\n\n';
-    } else {
-      const noteMatch = line.match(/^Note:\s*(.+)$/);
-      if (noteMatch) {
-        currentSlide.notes += noteMatch[1] + ' ';
-      } else {
-        const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
-        if (headingMatch && !currentSlide.title) {
-          currentSlide.title = headingMatch[2];
-          currentSlide.level = headingMatch[1].length;
-        }
-        currentSlide.content += line + '\n';
-      }
-    }
-  }
-
-  if (currentSlide.content.trim()) {
-    if (needsSplit(currentSlide.content)) {
-      const splitContents = splitLongContent(currentSlide.content, currentSlide.title || '续');
-      splitContents.forEach((content, idx) => {
-        if (idx === 0) {
-          currentSlide.content = content;
-          currentSlide.index = slideIndex++;
-          slides.push(currentSlide);
-        } else {
-          slides.push({
-            content: content,
-            title: currentSlide.title,
-            level: currentSlide.level,
-            index: slideIndex++,
-            notes: ''
-          });
-        }
-      });
-    } else {
-      currentSlide.index = slideIndex;
-      slides.push(currentSlide);
-    }
-  }
-
-  return slides;
-}
 
 // ============================================================================
 // SLIDEV-SPECIFIC FUNCTIONS
@@ -469,7 +289,6 @@ async function build(inputPath, outputPath, config = {}) {
   const finalConfig = { ...DEFAULT_CONFIG, ...config };
 
   // Resolve paths - handle both relative and absolute paths
-  // Scripts are in skills/html-presentation/scripts/, need to go up 3 levels to project root
   const scriptDir = __dirname;
   const baseDir = path.dirname(path.dirname(path.dirname(scriptDir)));
 
@@ -493,10 +312,7 @@ async function build(inputPath, outputPath, config = {}) {
 
   const markdown = fs.readFileSync(resolvedInputPath, 'utf-8');
 
-  // For Slidev, we do NOT split content because:
-  // 1. Slidev has built-in overflow handling with scrollbars
-  // 2. Splitting creates YAML parsing issues with --- delimiters
-  // 3. The content can be scrolled naturally within each slide
+  // For Slidev, content scrolling handles long slides naturally
   const processedMarkdown = markdown;
 
   const enhancedMarkdown = enhanceMarkdownForSlidev(processedMarkdown);
@@ -539,9 +355,9 @@ async function build(inputPath, outputPath, config = {}) {
     if (fs.existsSync(slidevIndexHtml)) {
       let content = fs.readFileSync(slidevIndexHtml, 'utf-8');
 
-      // Fix asset paths - replace all /assets/ occurrences with relative path
-      content = content.replace(/href="\/assets\//g, 'href="./异构编程技术洞察-assets/');
-      content = content.replace(/src="\/assets\//g, 'src="./异构编程技术洞察-assets/');
+      // Fix asset paths - use generic prefix
+      content = content.replace(/href="\/assets\//g, 'href="./assets/');
+      content = content.replace(/src="\/assets\//g, 'src="./assets/');
 
       // Inject custom styles for better content display and toolbar
       const customStyles = generateSlidevStyles();

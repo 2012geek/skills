@@ -1,10 +1,12 @@
+import { safeIntl } from '../../../base/common/date.js';
+import { LRUCache } from '../../../base/common/map.js';
+import { CharacterClassifier } from './characterClassifier.js';
+
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-import { LRUCache } from '../../../base/common/map.js';
-import { CharacterClassifier } from './characterClassifier.js';
-export class WordCharacterClassifier extends CharacterClassifier {
+class WordCharacterClassifier extends CharacterClassifier {
     constructor(wordSeparators, intlSegmenterLocales) {
         super(0 /* WordCharacterClass.Regular */);
         this._segmenter = null;
@@ -12,7 +14,7 @@ export class WordCharacterClassifier extends CharacterClassifier {
         this._cachedSegments = [];
         this.intlSegmenterLocales = intlSegmenterLocales;
         if (this.intlSegmenterLocales.length > 0) {
-            this._segmenter = new Intl.Segmenter(this.intlSegmenterLocales, { granularity: 'word' });
+            this._segmenter = safeIntl.Segmenter(this.intlSegmenterLocales, { granularity: 'word' });
         }
         else {
             this._segmenter = null;
@@ -52,7 +54,7 @@ export class WordCharacterClassifier extends CharacterClassifier {
         }
         // Update the cache with the new line
         this._cachedLine = line;
-        this._cachedSegments = this._filterWordSegments(this._segmenter.segment(line));
+        this._cachedSegments = this._filterWordSegments(this._segmenter.value.segment(line));
         return this._cachedSegments;
     }
     _filterWordSegments(segments) {
@@ -72,7 +74,7 @@ export class WordCharacterClassifier extends CharacterClassifier {
     }
 }
 const wordClassifierCache = new LRUCache(10);
-export function getMapForWordSeparators(wordSeparators, intlSegmenterLocales) {
+function getMapForWordSeparators(wordSeparators, intlSegmenterLocales) {
     const key = `${wordSeparators}/${intlSegmenterLocales.join(',')}`;
     let result = wordClassifierCache.get(key);
     if (!result) {
@@ -81,3 +83,5 @@ export function getMapForWordSeparators(wordSeparators, intlSegmenterLocales) {
     }
     return result;
 }
+
+export { WordCharacterClassifier, getMapForWordSeparators };

@@ -1,7 +1,7 @@
 /**
  * Represents contiguous tokens over a contiguous range of lines.
  */
-export class ContiguousMultilineTokens {
+class ContiguousMultilineTokens {
     /**
      * (Inclusive) start line number for these tokens.
      */
@@ -28,3 +28,5 @@ export class ContiguousMultilineTokens {
         this._tokens.push(lineTokens);
     }
 }
+
+export { ContiguousMultilineTokens };

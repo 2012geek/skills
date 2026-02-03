@@ -335,9 +335,11 @@ class ImageProcessor {
     let updated = markdown
 
     for (const img of images) {
-      if (img.localPath && img.relativePath) {
-        // 转换为相对路径
-        const webPath = img.relativePath.split(path.sep).join('/')
+      if (img.localPath) {
+        // 从 localPath 中提取文件名
+        const fileName = path.basename(img.localPath)
+        // 始终使用 /images/xxx 格式（Slidev 标准格式）
+        const webPath = '/images/' + fileName
 
         if (img.type === 'markdown') {
           updated = updated.replace(
@@ -345,10 +347,12 @@ class ImageProcessor {
             `![${img.alt}](${webPath})`
           )
         } else {
-          // HTML 格式
+          // HTML 格式 - 完整替换整个标签
+          const widthMatch = img.original.match(/width=["']([^"']+)["']/)
+          const widthAttr = widthMatch ? ` width="${widthMatch[1]}"` : ''
           updated = updated.replace(
             img.original,
-            img.original.replace(/src=["'][^"']+["']/, `src="${webPath}"`)
+            `<img src="${webPath}"${widthAttr}/>`
           )
         }
       }

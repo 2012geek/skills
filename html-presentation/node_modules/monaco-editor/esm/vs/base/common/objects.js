@@ -1,9 +1,10 @@
+import { isUndefinedOrNull, isObject, isTypedArray } from './types.js';
+
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-import { isTypedArray, isObject, isUndefinedOrNull } from './types.js';
-export function deepClone(obj) {
+function deepClone(obj) {
     if (!obj || typeof obj !== 'object') {
         return obj;
     }
@@ -16,7 +17,7 @@ export function deepClone(obj) {
     });
     return result;
 }
-export function deepFreeze(obj) {
+function deepFreeze(obj) {
     if (!obj || typeof obj !== 'object') {
         return obj;
     }
@@ -36,7 +37,7 @@ export function deepFreeze(obj) {
     return obj;
 }
 const _hasOwnProperty = Object.prototype.hasOwnProperty;
-export function cloneAndChange(obj, changer) {
+function cloneAndChange(obj, changer) {
     return _cloneAndChange(obj, changer, new Set());
 }
 function _cloneAndChange(obj, changer, seen) {
@@ -74,7 +75,7 @@ function _cloneAndChange(obj, changer, seen) {
  * Copies all properties of source into destination. The optional parameter "overwrite" allows to control
  * if existing properties on the destination should be overwritten or not. Defaults to true (overwrite).
  */
-export function mixin(destination, source, overwrite = true) {
+function mixin(destination, source, overwrite = true) {
     if (!isObject(destination)) {
         return source;
     }
@@ -97,7 +98,7 @@ export function mixin(destination, source, overwrite = true) {
     }
     return destination;
 }
-export function equals(one, other) {
+function equals(one, other) {
     if (one === other) {
         return true;
     }
@@ -147,33 +148,5 @@ export function equals(one, other) {
     }
     return true;
 }
-export function getAllPropertyNames(obj) {
-    let res = [];
-    while (Object.prototype !== obj) {
-        res = res.concat(Object.getOwnPropertyNames(obj));
-        obj = Object.getPrototypeOf(obj);
-    }
-    return res;
-}
-export function getAllMethodNames(obj) {
-    const methods = [];
-    for (const prop of getAllPropertyNames(obj)) {
-        if (typeof obj[prop] === 'function') {
-            methods.push(prop);
-        }
-    }
-    return methods;
-}
-export function createProxyObject(methodNames, invoke) {
-    const createProxyMethod = (method) => {
-        return function () {
-            const args = Array.prototype.slice.call(arguments, 0);
-            return invoke(method, args);
-        };
-    };
-    const result = {};
-    for (const methodName of methodNames) {
-        result[methodName] = createProxyMethod(methodName);
-    }
-    return result;
-}
+
+export { cloneAndChange, deepClone, deepFreeze, equals, mixin };

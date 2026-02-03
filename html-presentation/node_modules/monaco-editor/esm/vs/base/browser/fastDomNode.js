@@ -2,7 +2,7 @@
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-export class FastDomNode {
+class FastDomNode {
     constructor(domNode) {
         this.domNode = domNode;
         this._maxWidth = '';
@@ -31,6 +31,9 @@ export class FastDomNode {
         this._layerHint = false;
         this._contain = 'none';
         this._boxShadow = '';
+    }
+    focus() {
+        this.domNode.focus();
     }
     setMaxWidth(_maxWidth) {
         const maxWidth = numberAsPixels(_maxWidth);
@@ -245,6 +248,8 @@ export class FastDomNode {
 function numberAsPixels(value) {
     return (typeof value === 'number' ? `${value}px` : value);
 }
-export function createFastDomNode(domNode) {
+function createFastDomNode(domNode) {
     return new FastDomNode(domNode);
 }
+
+export { FastDomNode, createFastDomNode };

@@ -1,14 +1,16 @@
+import { Position } from '../core/position.js';
+import { Range } from '../core/range.js';
+import { countEOL } from '../core/misc/eolCounter.js';
+import { RateLimiter } from './common.js';
+
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-import { Position } from '../core/position.js';
-import { Range } from '../core/range.js';
-import { countEOL } from '../core/eolCounter.js';
 /**
  * Represents sparse tokens over a contiguous range of lines.
  */
-export class SparseMultilineTokens {
+class SparseMultilineTokens {
     static create(startLineNumber, tokens) {
         return new SparseMultilineTokens(startLineNumber, new SparseMultilineTokensStorage(tokens));
     }
@@ -126,6 +128,9 @@ export class SparseMultilineTokens {
         }
         this._tokens.acceptInsertText(lineIndex, position.column - 1, eolCount, firstLineLength, lastLineLength, firstCharCode);
     }
+    reportIfInvalid(model) {
+        this._tokens.reportIfInvalid(model, this._startLineNumber);
+    }
 }
 class SparseMultilineTokensStorage {
     constructor(tokens) {
@@ -230,6 +235,10 @@ class SparseMultilineTokensStorage {
                     tokens[destOffset + 1] = tokenStartCharacter;
                     tokens[destOffset + 2] = tokenEndCharacter;
                     tokens[destOffset + 3] = tokenMetadata;
+                }
+                else if (firstDeltaLine !== 0) {
+                    // must adjust the delta line in place
+                    tokens[srcOffset] = tokenDeltaLine - firstDeltaLine;
                 }
                 newTokenCount++;
             }
@@ -496,8 +505,29 @@ class SparseMultilineTokensStorage {
             tokens[offset + 2] = tokenEndCharacter;
         }
     }
+    static { this._rateLimiter = new RateLimiter(10 / 60); } // limit to 10 times per minute
+    reportIfInvalid(model, startLineNumber) {
+        for (let i = 0; i < this._tokenCount; i++) {
+            const lineNumber = this._getDeltaLine(i) + startLineNumber;
+            if (lineNumber < 1) {
+                SparseMultilineTokensStorage._rateLimiter.runIfNotLimited(() => {
+                    console.error('Invalid Semantic Tokens Data From Extension: lineNumber < 1');
+                });
+            }
+            else if (lineNumber > model.getLineCount()) {
+                SparseMultilineTokensStorage._rateLimiter.runIfNotLimited(() => {
+                    console.error('Invalid Semantic Tokens Data From Extension: lineNumber > model.getLineCount()');
+                });
+            }
+            else if (this._getEndCharacter(i) > model.getLineLength(lineNumber)) {
+                SparseMultilineTokensStorage._rateLimiter.runIfNotLimited(() => {
+                    console.error('Invalid Semantic Tokens Data From Extension: end character > model.getLineLength(lineNumber)');
+                });
+            }
+        }
+    }
 }
-export class SparseLineTokens {
+class SparseLineTokens {
     constructor(tokens) {
         this._tokens = tokens;
     }
@@ -514,3 +544,5 @@ export class SparseLineTokens {
         return this._tokens[4 * tokenIndex + 3];
     }
 }
+
+export { SparseLineTokens, SparseMultilineTokens };

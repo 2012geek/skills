@@ -1,11 +1,12 @@
+import { quickSelect } from '../../../../base/common/arrays.js';
+import { FuzzyScoreOptions, fuzzyScore, fuzzyScoreGracefulAggressive, FuzzyScore, anyScore } from '../../../../base/common/filters.js';
+import { compareIgnoreCase } from '../../../../base/common/strings.js';
+
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-import { quickSelect } from '../../../../base/common/arrays.js';
-import { anyScore, fuzzyScore, FuzzyScore, fuzzyScoreGracefulAggressive, FuzzyScoreOptions } from '../../../../base/common/filters.js';
-import { compareIgnoreCase } from '../../../../base/common/strings.js';
-export class LineContext {
+class LineContext {
     constructor(leadingLineContent, characterCountDelta) {
         this.leadingLineContent = leadingLineContent;
         this.characterCountDelta = characterCountDelta;
@@ -14,7 +15,7 @@ export class LineContext {
 /**
  * Sorted, filtered completion view model
  * */
-export class CompletionModel {
+class CompletionModel {
     constructor(items, column, lineContext, wordDistance, options, snippetSuggestions, fuzzyScoreOptions = FuzzyScoreOptions.default, clipboardText = undefined) {
         this.clipboardText = clipboardText;
         this._snippetCompareFn = CompletionModel._compareCompletionItems;
@@ -201,10 +202,10 @@ export class CompletionModel {
     }
     static _compareCompletionItemsSnippetsDown(a, b) {
         if (a.completion.kind !== b.completion.kind) {
-            if (a.completion.kind === 27 /* CompletionItemKind.Snippet */) {
+            if (a.completion.kind === 28 /* CompletionItemKind.Snippet */) {
                 return 1;
             }
-            else if (b.completion.kind === 27 /* CompletionItemKind.Snippet */) {
+            else if (b.completion.kind === 28 /* CompletionItemKind.Snippet */) {
                 return -1;
             }
         }
@@ -212,13 +213,15 @@ export class CompletionModel {
     }
     static _compareCompletionItemsSnippetsUp(a, b) {
         if (a.completion.kind !== b.completion.kind) {
-            if (a.completion.kind === 27 /* CompletionItemKind.Snippet */) {
+            if (a.completion.kind === 28 /* CompletionItemKind.Snippet */) {
                 return -1;
             }
-            else if (b.completion.kind === 27 /* CompletionItemKind.Snippet */) {
+            else if (b.completion.kind === 28 /* CompletionItemKind.Snippet */) {
                 return 1;
             }
         }
         return CompletionModel._compareCompletionItems(a, b);
     }
 }
+
+export { CompletionModel, LineContext };

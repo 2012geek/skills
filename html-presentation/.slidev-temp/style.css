@@ -1,0 +1,211 @@
+
+/* Chinese Font Optimization - Microsoft YaHei Black Bold */
+* {
+  font-family: "Microsoft YaHei", "微软雅黑", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  font-weight: 900 !important;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 900 !important;
+  text-align: left !important;
+}
+
+p, li, td, th, span, div {
+  font-family: "Microsoft YaHei", "微软雅黑", -apple-system, BlinkMacSystemFont, sans-serif !important;
+  font-weight: 900 !important;
+  text-align: left !important;
+}
+
+.slide-content {
+  text-align: left !important;
+  max-height: 90vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 20px;
+}
+
+ul, ol {
+  text-align: left !important;
+  margin-left: 40px !important;
+}
+
+li {
+  text-align: left !important;
+  margin-bottom: 8px !important;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 15px 0;
+  text-align: left !important;
+}
+
+th, td {
+  padding: 12px 15px;
+  text-align: left !important;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+th {
+  background: rgba(99, 102, 241, 0.1);
+  font-weight: 900 !important;
+}
+
+pre {
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  margin: 15px 0;
+  text-align: left !important;
+}
+
+code {
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
+}
+
+p code, li code {
+  background: rgba(0, 0, 0, 0.05);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+blockquote {
+  border-left: 4px solid #6366f1;
+  padding-left: 20px;
+  margin: 15px 0;
+  font-style: italic;
+  color: rgba(0, 0, 0, 0.8);
+  text-align: left !important;
+}
+
+/* Scrollbar styling */
+.slide-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.slide-content::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.slide-content::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.3);
+  border-radius: 4px;
+}
+
+.slide-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.5);
+}
+
+/* ========================================
+   Two-column layout (for TOC, lists, etc.)
+   ======================================== */
+
+.slide-content:deep(.two-cols) {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 1.5rem !important;
+  align-items: start !important;
+  padding: 0.5rem 1.5rem !important;
+}
+
+/* Title spans full width in two-column layout */
+.slide-content:deep(.two-cols) > h2,
+.slide-content:deep(.two-cols) > h3,
+.slide-content:deep(.two-cols) > h4 {
+  grid-column: 1 / -1 !important;
+  font-size: 1.8rem !important;
+  margin-bottom: 0.5rem !important;
+  margin-top: 0 !important;
+}
+
+.slide-content:deep(.two-cols) ul,
+.slide-content:deep(.two-cols) ol {
+  margin: 0 !important;
+  padding-left: 0.8rem !important;
+}
+
+.slide-content:deep(.two-cols) li {
+  margin-bottom: 0.25rem !important;
+  line-height: 1.2 !important;
+}
+
+/* Sub-items tighter */
+.slide-content:deep(.two-cols) li li {
+  margin-bottom: 0.15rem !important;
+  font-size: 0.9em !important;
+}
+
+/* ========================================
+   Compact font variant (for dense content)
+   ======================================== */
+
+.slide-content:deep(.font-compact) {
+  font-size: 0.85em !important;
+}
+
+.slide-content:deep(.font-compact) li {
+  margin-bottom: 0.2rem !important;
+  line-height: 1.15 !important;
+}
+
+.slide-content:deep(.font-compact) p {
+  margin-bottom: 0.5rem !important;
+  line-height: 1.15 !important;
+}
+
+/* ========================================
+   Scroll-enabled variant (for long content)
+   ======================================== */
+
+.slide-content:deep(.scroll-enabled) {
+  max-height: 85vh !important;
+  overflow-y: auto !important;
+}
+
+.slide-content:deep(.scroll-enabled)::-webkit-scrollbar {
+  width: 10px !important;
+}
+
+.slide-content:deep(.scroll-enabled)::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.4) !important;
+  border-radius: 5px !important;
+}
+
+.slide-content:deep(.scroll-enabled)::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.6) !important;
+}
+
+/* ========================================
+   TOC-specific optimizations
+   ======================================== */
+
+/* Make TOC titles smaller */
+.slide-content:deep(.two-cols) h2 {
+  font-size: 1.5rem !important;
+  margin-bottom: 0.3rem !important;
+}
+
+/* Aggressive TOC spacing for very dense content */
+.slide-content:deep(.two-cols) ul,
+.slide-content:deep(.two-cols) ol {
+  font-size: 0.8em !important;
+  padding-left: 0.6rem !important;
+}
+
+.slide-content:deep(.two-cols) li {
+  margin-bottom: 0.15rem !important;
+  line-height: 1.1 !important;
+}
+
+/* Sub-items even tighter */
+.slide-content:deep(.two-cols) li li {
+  margin-bottom: 0.1rem !important;
+  font-size: 0.85em !important;
+  line-height: 1.1 !important;
+}
+
+/* Reduce column gap for TOC */
+.slide-content:deep(.two-cols) {
+  gap: 0.8rem !important;
+  padding: 0.3rem 1rem !important;
+}

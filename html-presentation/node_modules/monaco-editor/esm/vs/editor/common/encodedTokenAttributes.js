@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 /**
  */
-export class TokenMetadata {
+class TokenMetadata {
     static getLanguageId(metadata) {
         return (metadata & 255 /* MetadataConsts.LANGUAGEID_MASK */) >>> 0 /* MetadataConsts.LANGUAGEID_OFFSET */;
     }
@@ -75,3 +75,5 @@ export class TokenMetadata {
         };
     }
 }
+
+export { TokenMetadata };

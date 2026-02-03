@@ -5,7 +5,7 @@
 /**
  * A position in the editor.
  */
-export class Position {
+class Position {
     constructor(lineNumber, column) {
         this.lineNumber = lineNumber;
         this.column = column;
@@ -31,7 +31,7 @@ export class Position {
      * @param deltaColumn column delta
      */
     delta(deltaLineNumber = 0, deltaColumn = 0) {
-        return this.with(this.lineNumber + deltaLineNumber, this.column + deltaColumn);
+        return this.with(Math.max(1, this.lineNumber + deltaLineNumber), Math.max(1, this.column + deltaColumn));
     }
     /**
      * Test if this position equals other position
@@ -127,7 +127,7 @@ export class Position {
      * Test if `obj` is an `IPosition`.
      */
     static isIPosition(obj) {
-        return (obj
+        return (!!obj
             && (typeof obj.lineNumber === 'number')
             && (typeof obj.column === 'number'));
     }
@@ -138,3 +138,5 @@ export class Position {
         };
     }
 }
+
+export { Position };

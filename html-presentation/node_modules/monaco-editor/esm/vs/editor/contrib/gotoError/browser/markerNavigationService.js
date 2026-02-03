@@ -1,17 +1,4 @@
-/*---------------------------------------------------------------------------------------------
- *  Copyright (c) Microsoft Corporation. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
- *--------------------------------------------------------------------------------------------*/
-var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
-    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
-    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
-    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
-    return c > 3 && r && Object.defineProperty(target, key, r), r;
-};
-var __param = (this && this.__param) || function (paramIndex, decorator) {
-    return function (target, key) { decorator(target, key, paramIndex); }
-};
-import { binarySearch } from '../../../../base/common/arrays.js';
+import { binarySearch2, equals } from '../../../../base/common/arrays.js';
 import { Emitter } from '../../../../base/common/event.js';
 import { DisposableStore } from '../../../../base/common/lifecycle.js';
 import { LinkedList } from '../../../../base/common/linkedList.js';
@@ -22,7 +9,22 @@ import { registerSingleton } from '../../../../platform/instantiation/common/ext
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
 import { IMarkerService, MarkerSeverity } from '../../../../platform/markers/common/markers.js';
 import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
-export class MarkerCoordinate {
+import { isEqual } from '../../../../base/common/resources.js';
+
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+var __decorate = (undefined && undefined.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __param = (undefined && undefined.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
+class MarkerCoordinate {
     constructor(marker, index, total) {
         this.marker = marker;
         this.index = index;
@@ -58,21 +60,33 @@ let MarkerList = class MarkerList {
             return res;
         };
         const updateMarker = () => {
-            this._markers = this._markerService.read({
+            let newMarkers = this._markerService.read({
                 resource: URI.isUri(resourceFilter) ? resourceFilter : undefined,
                 severities: MarkerSeverity.Error | MarkerSeverity.Warning | MarkerSeverity.Info
             });
             if (typeof resourceFilter === 'function') {
-                this._markers = this._markers.filter(m => this._resourceFilter(m.resource));
+                newMarkers = newMarkers.filter(m => this._resourceFilter(m.resource));
             }
-            this._markers.sort(compareMarker);
+            newMarkers.sort(compareMarker);
+            if (equals(newMarkers, this._markers, (a, b) => a.resource.toString() === b.resource.toString()
+                && a.startLineNumber === b.startLineNumber
+                && a.startColumn === b.startColumn
+                && a.endLineNumber === b.endLineNumber
+                && a.endColumn === b.endColumn
+                && a.severity === b.severity
+                && a.message === b.message)) {
+                return false;
+            }
+            this._markers = newMarkers;
+            return true;
         };
         updateMarker();
         this._dispoables.add(_markerService.onMarkerChanged(uris => {
             if (!this._resourceFilter || uris.some(uri => this._resourceFilter(uri))) {
-                updateMarker();
-                this._nextIdx = -1;
-                this._onDidChange.fire();
+                if (updateMarker()) {
+                    this._nextIdx = -1;
+                    this._onDidChange.fire();
+                }
             }
         }));
     }
@@ -94,34 +108,50 @@ let MarkerList = class MarkerList {
         return marker && new MarkerCoordinate(marker, this._nextIdx + 1, this._markers.length);
     }
     _initIdx(model, position, fwd) {
-        let found = false;
-        let idx = this._markers.findIndex(marker => marker.resource.toString() === model.uri.toString());
+        let idx = this._markers.findIndex(marker => isEqual(marker.resource, model.uri));
         if (idx < 0) {
-            idx = binarySearch(this._markers, { resource: model.uri }, (a, b) => compare(a.resource.toString(), b.resource.toString()));
+            // ignore model, position because this will be a different file
+            idx = binarySearch2(this._markers.length, idx => compare(this._markers[idx].resource.toString(), model.uri.toString()));
             if (idx < 0) {
                 idx = ~idx;
             }
+            if (fwd) {
+                this._nextIdx = idx;
+            }
+            else {
+                this._nextIdx = (this._markers.length + idx - 1) % this._markers.length;
+            }
         }
-        for (let i = idx; i < this._markers.length; i++) {
-            let range = Range.lift(this._markers[i]);
-            if (range.isEmpty()) {
-                const word = model.getWordAtPosition(range.getStartPosition());
-                if (word) {
-                    range = new Range(range.startLineNumber, word.startColumn, range.startLineNumber, word.endColumn);
+        else {
+            // find marker for file
+            let found = false;
+            let wentPast = false;
+            for (let i = idx; i < this._markers.length; i++) {
+                let range = Range.lift(this._markers[i]);
+                if (range.isEmpty()) {
+                    const word = model.getWordAtPosition(range.getStartPosition());
+                    if (word) {
+                        range = new Range(range.startLineNumber, word.startColumn, range.startLineNumber, word.endColumn);
+                    }
+                }
+                if (position && (range.containsPosition(position) || position.isBeforeOrEqual(range.getStartPosition()))) {
+                    this._nextIdx = i;
+                    found = true;
+                    wentPast = !range.containsPosition(position);
+                    break;
+                }
+                if (this._markers[i].resource.toString() !== model.uri.toString()) {
+                    break;
                 }
             }
-            if (position && (range.containsPosition(position) || position.isBeforeOrEqual(range.getStartPosition()))) {
-                this._nextIdx = i;
-                found = true;
-                break;
+            if (!found) {
+                // after the last change
+                this._nextIdx = fwd ? 0 : this._markers.length - 1;
             }
-            if (this._markers[i].resource.toString() !== model.uri.toString()) {
-                break;
+            else if (wentPast && !fwd) {
+                // we went past and have to go one back
+                this._nextIdx -= 1;
             }
-        }
-        if (!found) {
-            // after the last change
-            this._nextIdx = fwd ? 0 : this._markers.length - 1;
         }
         if (this._nextIdx < 0) {
             this._nextIdx = this._markers.length - 1;
@@ -166,8 +196,7 @@ MarkerList = __decorate([
     __param(1, IMarkerService),
     __param(2, IConfigurationService)
 ], MarkerList);
-export { MarkerList };
-export const IMarkerNavigationService = createDecorator('IMarkerNavigationService');
+const IMarkerNavigationService = createDecorator('IMarkerNavigationService');
 let MarkerNavigationService = class MarkerNavigationService {
     constructor(_markerService, _configService) {
         this._markerService = _markerService;
@@ -190,3 +219,5 @@ MarkerNavigationService = __decorate([
     __param(1, IConfigurationService)
 ], MarkerNavigationService);
 registerSingleton(IMarkerNavigationService, MarkerNavigationService, 1 /* InstantiationType.Delayed */);
+
+export { IMarkerNavigationService, MarkerCoordinate, MarkerList };

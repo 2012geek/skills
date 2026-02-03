@@ -1,10 +1,12 @@
+import { Emitter } from '../../../base/common/event.js';
+import { Disposable, toDisposable } from '../../../base/common/lifecycle.js';
+import { Registry } from '../../registry/common/platform.js';
+
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-import { Emitter } from '../../../base/common/event.js';
-import * as platform from '../../registry/common/platform.js';
-export const Extensions = {
+const Extensions = {
     JSONContribution: 'base.contributions.json'
 };
 function normalizeId(id) {
@@ -13,18 +15,28 @@ function normalizeId(id) {
     }
     return id;
 }
-class JSONContributionRegistry {
+class JSONContributionRegistry extends Disposable {
     constructor() {
-        this._onDidChangeSchema = new Emitter();
+        super(...arguments);
         this.schemasById = {};
+        this._onDidChangeSchema = this._register(new Emitter());
     }
-    registerSchema(uri, unresolvedSchemaContent) {
-        this.schemasById[normalizeId(uri)] = unresolvedSchemaContent;
+    registerSchema(uri, unresolvedSchemaContent, store) {
+        const normalizedUri = normalizeId(uri);
+        this.schemasById[normalizedUri] = unresolvedSchemaContent;
         this._onDidChangeSchema.fire(uri);
+        if (store) {
+            store.add(toDisposable(() => {
+                delete this.schemasById[normalizedUri];
+                this._onDidChangeSchema.fire(uri);
+            }));
+        }
     }
     notifySchemaChanged(uri) {
         this._onDidChangeSchema.fire(uri);
     }
 }
 const jsonContributionRegistry = new JSONContributionRegistry();
-platform.Registry.add(Extensions.JSONContribution, jsonContributionRegistry);
+Registry.add(Extensions.JSONContribution, jsonContributionRegistry);
+
+export { Extensions };

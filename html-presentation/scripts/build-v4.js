@@ -44,6 +44,10 @@ function loadConfig(cliArgs = {}) {
     try {
       const fileContent = fs.readFileSync(configPath, 'utf-8');
       fileConfig = JSON.parse(fileContent);
+      // Debug: 读取到的配置
+      if (process.env.DEBUG) {
+        console.log('[DEBUG] 读取 config.json:', JSON.stringify(fileConfig, null, 2));
+      }
 
       // 扁平化嵌套配置
       if (fileConfig.imageProcessing) {
@@ -64,12 +68,15 @@ function loadConfig(cliArgs = {}) {
     } catch (err) {
       console.warn(`⚠️  警告: 无法读取 config.json: ${err.message}`);
     }
+  } else {
+    console.warn(`⚠️  配置文件不存在: ${configPath}`);
   }
 
   // 2. 从环境变量加载
-  const envConfig = {
-    githubToken: process.env.GITHUB_TOKEN || ''
-  };
+  const envConfig = {};
+  if (process.env.GITHUB_TOKEN) {
+    envConfig.githubToken = process.env.GITHUB_TOKEN;
+  }
 
   // 3. 合并配置 (默认值 < 文件 < 环境变量 < CLI参数)
   return {
@@ -86,10 +93,16 @@ function loadConfig(cliArgs = {}) {
 
 async function buildV4(inputPath, outputPath, config = {}) {
   const finalConfig = {
+    githubToken: '',
     processImages: true,
     smartSplit: true,
     autoLayout: true,
     theme: 'modern-simple-light',
+    port: 3030,
+    host: '0.0.0.0',
+    mode: 'dev',
+    timeout: 30000,
+    maxConcurrent: 1,
     ...config
   };
 
@@ -111,9 +124,10 @@ async function buildV4(inputPath, outputPath, config = {}) {
   if (finalConfig.processImages) {
     console.log('🖼️  步骤 2: 图片处理');
     console.log('─────────────────────────────────────────────────────────────');
+    console.log('配置: timeout=', finalConfig.timeout, 'maxConcurrent=', finalConfig.maxConcurrent, 'githubToken=', finalConfig.githubToken ? '已设置' : '未设置');
 
     const imgProcessor = new ImageProcessor({
-      cacheDir: path.join(path.dirname(outputPath || '.'), 'assets/images'),
+      cacheDir: path.join(process.cwd(), 'public/images'),  // Slidev 标准目录
       skipExisting: true,
       timeout: finalConfig.imageTimeout || finalConfig.timeout || 30000,
       maxConcurrent: finalConfig.maxConcurrent || 1,
@@ -184,9 +198,9 @@ async function buildV4(inputPath, outputPath, config = {}) {
   // 这里使用现有的 slidev-generator，但可以扩展使用新架构
   const { generateSlidevMarkdown } = require('./slidev-generator');
 
-  // 先将处理后的内容写入临时文件
+  // 先将处理后的完整内容写入临时文件
   const tempInputPath = path.join(process.cwd(), '.slidev-v4-input.md');
-  const contentToProcess = splitResult.split ? splitResult.splits[0].content : processedMarkdown;
+  const contentToProcess = processedMarkdown;  // 使用完整内容，让 slidev-generator 自动分页
   fs.writeFileSync(tempInputPath, contentToProcess, 'utf-8');
 
   const tempPath = path.join(process.cwd(), '.slidev-v4-temp.md');

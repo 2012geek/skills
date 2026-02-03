@@ -1,12 +1,13 @@
+import { Range } from '../core/range.js';
+
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-import { Range } from '../core/range.js';
 /**
  * Contains all data needed to render at a specific viewport.
  */
-export class ViewportData {
+class ViewportData {
     constructor(selections, partialData, whitespaceViewportData, model) {
         this.selections = selections;
         this.startLineNumber = partialData.startLineNumber | 0;
@@ -25,3 +26,5 @@ export class ViewportData {
         return this._model.getDecorationsInViewport(this.visibleRange);
     }
 }
+
+export { ViewportData };

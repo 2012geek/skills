@@ -1,19 +1,18 @@
-# HTML Presentation Skill - 架构说明 (v3.1.1)
+# HTML Presentation Skill - 架构说明 (v4.0.0)
 
 ## 📁 文件结构
 
 ```
 skills/html-presentation/
 ├── scripts/
-│   ├── build.js                    ⭐ 主入口
-│   ├── build-reveal.js              → Reveal.js 构建器
+│   ├── build.js                    ⭐ 主入口 (v4.0.0 - Slidev-only)
 │   ├── build-slidev.js              → Slidev 构建器
-│   ├── slidev-generator.js          ✨ NEW - Slidev Markdown 生成器
+│   ├── slidev-generator.js          → Slidev Markdown 生成器
 │   ├── init.js                      → 初始化脚本
 │   └── serve.js                     → 静态文件服务器
 ├── components/                       → Vue 组件
 ├── node_modules/                     → 依赖
-└── package.json                      → 依赖配置
+└── package.json                      → 依赖配置 (v4.0.0)
 ```
 
 ## 🔄 工作流程
@@ -39,7 +38,7 @@ startDevMode()
 浏览器访问: http://localhost:3030
 ```
 
-## 🆕 slidev-generator.js (NEW)
+## 🆕 slidev-generator.js
 
 **功能**: 将原始 Markdown 转换为 Slidev 格式
 
@@ -54,15 +53,15 @@ startDevMode()
 ---
 theme: seriph
 highlighter: shiki
-lineNumbers: true
+lineNumbers: false
 drawings:
-  persist: true
+  persist: false
 editor: false
-transition: slide
-download: true
-info: true
+transition: none
+download: false
+info: false
 canCopy: true
-transitionSlide: true
+transitionSlide: false
 mouseWheel: true
 fonts:
   sans: ["Microsoft YaHei","微软雅黑","sans-serif"]
@@ -150,33 +149,30 @@ node proxy-server.js
 import { defineConfig } from '@slidev/cli'
 
 export default defineConfig({
-  server: {
-    host: '0.0.0.0',
-    port: 3030,
-    strictPort: true
+  theme: 'seriph',
+  highlighter: 'shiki',
+  lineNumbers: false,
+  drawings: {
+    persist: false,
   },
+  editor: false,
+  transition: 'none',
+  download: false,
+  info: false,
+  canCopy: true,
+  transitionSlide: false,
+  mouseWheel: true,
+  recording: {
+    enabled: false,
+    video: false,
+    audio: false,
+  },
+  class: 'text-left',
   vite: {
-    server: {
-      host: '0.0.0.0',
-      port: 3030
-    }
+    assetsInclude: ['**/*.png', '**/*.jpg', '**/*.jpeg', '**/*.gif', '**/*.svg', '**/*.webp'],
   }
 })
 ```
-
-### vite.config.ts
-```typescript
-import { defineConfig } from 'vite'
-
-export default defineConfig({
-  server: {
-    host: '0.0.0.0',
-    port: 3030
-  }
-})
-```
-
-**注意**: 配置文件目前未完全生效，Slidev CLI 不支持 `--host` 参数
 
 ## 🎯 最佳实践
 
@@ -204,7 +200,7 @@ npx @slidev/cli "陈乐宁技术洞察/slidev-deck.md" --port 3030
 
 ## 🔧 技术细节
 
-###幻灯片处理器 (SlideProcessor)
+### 幻灯片处理器 (SlideProcessor)
 
 **状态管理**:
 - `slides[]` - 存储所有幻灯片
@@ -247,7 +243,6 @@ module.exports = {
 module.exports = {
   build,              // 主构建函数
   DEFAULT_CONFIG,     // 默认配置
-  REVEAL_THEMES,      // Reveal.js 主题列表
   SLIDEV_THEMES       // Slidev 主题列表
 };
 ```
@@ -267,6 +262,13 @@ module.exports = {
    - 代码块内容保持原样
 
 ## 🔄 版本历史
+
+### v4.0.0 (2025-02-03) - Breaking Change
+- ❌ 移除 Reveal.js 支持
+- ❌ 移除 build-reveal.js
+- ❌ 移除 PPTX 导出
+- ✅ 简化为 Slidev-only
+- ✅ 更新所有文档
 
 ### v3.1.1 (2025-01-27)
 - ✅ 新增 `slidev-generator.js`

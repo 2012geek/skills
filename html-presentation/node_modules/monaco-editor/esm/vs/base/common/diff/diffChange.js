@@ -5,7 +5,7 @@
 /**
  * Represents information about a specific difference between two sequences.
  */
-export class DiffChange {
+class DiffChange {
     /**
      * Constructs a new DiffChange with the given sequence information
      * and content.
@@ -30,3 +30,5 @@ export class DiffChange {
         return this.modifiedStart + this.modifiedLength;
     }
 }
+
+export { DiffChange };

@@ -2,7 +2,7 @@
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-export class IdGenerator {
+class IdGenerator {
     constructor(prefix) {
         this._prefix = prefix;
         this._lastId = 0;
@@ -11,4 +11,6 @@ export class IdGenerator {
         return this._prefix + (++this._lastId);
     }
 }
-export const defaultGenerator = new IdGenerator('id#');
+const defaultGenerator = new IdGenerator('id#');
+
+export { IdGenerator, defaultGenerator };

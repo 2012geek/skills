@@ -1,13 +1,14 @@
+import { append, $, EventType, addDisposableListener, EventHelper, isMouseEvent } from '../../dom.js';
+import { StandardKeyboardEvent } from '../../keyboardEvent.js';
+import { EventType as EventType$1, Gesture } from '../../touch.js';
+import { ActionRunner } from '../../../common/actions.js';
+import { Emitter } from '../../../common/event.js';
+import './dropdown.css';
+
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-import { $, addDisposableListener, append, EventHelper, EventType, isMouseEvent } from '../../dom.js';
-import { StandardKeyboardEvent } from '../../keyboardEvent.js';
-import { EventType as GestureEventType, Gesture } from '../../touch.js';
-import { ActionRunner } from '../../../common/actions.js';
-import { Emitter } from '../../../common/event.js';
-import './dropdown.css';
 class BaseDropdown extends ActionRunner {
     constructor(container, options) {
         super();
@@ -22,14 +23,13 @@ class BaseDropdown extends ActionRunner {
                 return null;
             };
         }
-        for (const event of [EventType.CLICK, EventType.MOUSE_DOWN, GestureEventType.Tap]) {
+        for (const event of [EventType.CLICK, EventType.MOUSE_DOWN, EventType$1.Tap]) {
             this._register(addDisposableListener(this.element, event, e => EventHelper.stop(e, true))); // prevent default click behaviour to trigger
         }
-        for (const event of [EventType.MOUSE_DOWN, GestureEventType.Tap]) {
+        for (const event of [EventType.MOUSE_DOWN, EventType$1.Tap]) {
             this._register(addDisposableListener(this._label, event, e => {
-                if (isMouseEvent(e) && (e.detail > 1 || e.button !== 0)) {
+                if (isMouseEvent(e) && e.button !== 0) {
                     // prevent right click trigger to allow separate context menu (https://github.com/microsoft/vscode/issues/151064)
-                    // prevent multiple clicks to open multiple context menus (https://github.com/microsoft/vscode/issues/41363)
                     return;
                 }
                 if (this.visible) {
@@ -40,7 +40,7 @@ class BaseDropdown extends ActionRunner {
                 }
             }));
         }
-        this._register(addDisposableListener(this._label, EventType.KEY_UP, e => {
+        this._register(addDisposableListener(this._label, EventType.KEY_DOWN, e => {
             const event = new StandardKeyboardEvent(e);
             if (event.equals(3 /* KeyCode.Enter */) || event.equals(10 /* KeyCode.Space */)) {
                 EventHelper.stop(e, true); // https://github.com/microsoft/vscode/issues/57997
@@ -90,7 +90,7 @@ class BaseDropdown extends ActionRunner {
         }
     }
 }
-export class DropdownMenu extends BaseDropdown {
+class DropdownMenu extends BaseDropdown {
     constructor(container, _options) {
         super(container, _options);
         this._options = _options;
@@ -137,3 +137,5 @@ export class DropdownMenu extends BaseDropdown {
         this.element.classList.remove('active');
     }
 }
+
+export { BaseDropdown, DropdownMenu };

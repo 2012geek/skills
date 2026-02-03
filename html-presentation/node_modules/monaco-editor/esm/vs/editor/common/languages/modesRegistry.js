@@ -1,19 +1,22 @@
+import { localize } from '../../../nls.js';
+import { Emitter } from '../../../base/common/event.js';
+import { Registry } from '../../../platform/registry/common/platform.js';
+import { Disposable } from '../../../base/common/lifecycle.js';
+import { Mimes } from '../../../base/common/mime.js';
+import { Extensions as Extensions$1 } from '../../../platform/configuration/common/configurationRegistry.js';
+
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-import * as nls from '../../../nls.js';
-import { Emitter } from '../../../base/common/event.js';
-import { Registry } from '../../../platform/registry/common/platform.js';
-import { Mimes } from '../../../base/common/mime.js';
-import { Extensions as ConfigurationExtensions } from '../../../platform/configuration/common/configurationRegistry.js';
 // Define extension point ids
-export const Extensions = {
+const Extensions = {
     ModesRegistry: 'editor.modesRegistry'
 };
-export class EditorModesRegistry {
+class EditorModesRegistry extends Disposable {
     constructor() {
-        this._onDidChangeLanguages = new Emitter();
+        super();
+        this._onDidChangeLanguages = this._register(new Emitter());
         this.onDidChangeLanguages = this._onDidChangeLanguages.event;
         this._languages = [];
     }
@@ -35,22 +38,38 @@ export class EditorModesRegistry {
         return this._languages;
     }
 }
-export const ModesRegistry = new EditorModesRegistry();
+const ModesRegistry = new EditorModesRegistry();
 Registry.add(Extensions.ModesRegistry, ModesRegistry);
-export const PLAINTEXT_LANGUAGE_ID = 'plaintext';
-export const PLAINTEXT_EXTENSION = '.txt';
+const PLAINTEXT_LANGUAGE_ID = 'plaintext';
+const PLAINTEXT_EXTENSION = '.txt';
 ModesRegistry.registerLanguage({
     id: PLAINTEXT_LANGUAGE_ID,
     extensions: [PLAINTEXT_EXTENSION],
-    aliases: [nls.localize('plainText.alias', "Plain Text"), 'text'],
+    aliases: [localize(784, "Plain Text"), 'text'],
     mimetypes: [Mimes.text]
 });
-Registry.as(ConfigurationExtensions.Configuration)
+Registry.as(Extensions$1.Configuration)
     .registerDefaultConfigurations([{
         overrides: {
             '[plaintext]': {
                 'editor.unicodeHighlight.ambiguousCharacters': false,
                 'editor.unicodeHighlight.invisibleCharacters': false
+            },
+            // TODO: Below is a workaround for: https://github.com/microsoft/vscode/issues/240567
+            '[go]': {
+                'editor.insertSpaces': false
+            },
+            '[makefile]': {
+                'editor.insertSpaces': false,
+            },
+            '[shellscript]': {
+                'files.eol': '\n'
+            },
+            '[yaml]': {
+                'editor.insertSpaces': true,
+                'editor.tabSize': 2
             }
         }
     }]);
+
+export { EditorModesRegistry, Extensions, ModesRegistry, PLAINTEXT_EXTENSION, PLAINTEXT_LANGUAGE_ID };

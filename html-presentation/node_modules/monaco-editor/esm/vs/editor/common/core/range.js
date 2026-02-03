@@ -1,12 +1,13 @@
+import { Position } from './position.js';
+
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-import { Position } from './position.js';
 /**
  * A range in the editor. (startLineNumber,startColumn) is <= (endLineNumber,endColumn)
  */
-export class Range {
+class Range {
     constructor(startLineNumber, startColumn, endLineNumber, endColumn) {
         if ((startLineNumber > endLineNumber) || (startLineNumber === endLineNumber && startColumn > endColumn)) {
             this.startLineNumber = endLineNumber;
@@ -293,6 +294,9 @@ export class Range {
     delta(lineCount) {
         return new Range(this.startLineNumber + lineCount, this.startColumn, this.endLineNumber + lineCount, this.endColumn);
     }
+    isSingleLine() {
+        return this.startLineNumber === this.endLineNumber;
+    }
     // ---
     static fromPositions(start, end = start) {
         return new Range(start.lineNumber, start.column, end.lineNumber, end.column);
@@ -307,7 +311,7 @@ export class Range {
      * Test if `obj` is an `IRange`.
      */
     static isIRange(obj) {
-        return (obj
+        return (!!obj
             && (typeof obj.startLineNumber === 'number')
             && (typeof obj.startColumn === 'number')
             && (typeof obj.endLineNumber === 'number')
@@ -338,6 +342,21 @@ export class Range {
         }
         // Check if `b` is before `a`
         if (b.endLineNumber < a.startLineNumber || (b.endLineNumber === a.startLineNumber && b.endColumn <= a.startColumn)) {
+            return false;
+        }
+        // These ranges must intersect
+        return true;
+    }
+    /**
+     * Test if the two ranges are intersecting, but not touching at all.
+     */
+    static areOnlyIntersecting(a, b) {
+        // Check if `a` is before `b`
+        if (a.endLineNumber < (b.startLineNumber - 1) || (a.endLineNumber === b.startLineNumber && a.endColumn < (b.startColumn - 1))) {
+            return false;
+        }
+        // Check if `b` is before `a`
+        if (b.endLineNumber < (a.startLineNumber - 1) || (b.endLineNumber === a.startLineNumber && b.endColumn < (a.startColumn - 1))) {
             return false;
         }
         // These ranges must intersect
@@ -398,3 +417,5 @@ export class Range {
         return this;
     }
 }
+
+export { Range };

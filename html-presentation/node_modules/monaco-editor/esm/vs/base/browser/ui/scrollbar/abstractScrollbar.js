@@ -1,19 +1,20 @@
-/*---------------------------------------------------------------------------------------------
- *  Copyright (c) Microsoft Corporation. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
- *--------------------------------------------------------------------------------------------*/
-import * as dom from '../../dom.js';
+import { addDisposableListener, EventType, getDomNodePagePosition } from '../../dom.js';
 import { createFastDomNode } from '../../fastDomNode.js';
 import { GlobalPointerMoveMonitor } from '../../globalPointerMoveMonitor.js';
 import { ScrollbarArrow } from './scrollbarArrow.js';
 import { ScrollbarVisibilityController } from './scrollbarVisibilityController.js';
 import { Widget } from '../widget.js';
-import * as platform from '../../../common/platform.js';
+import { isWindows } from '../../../common/platform.js';
+
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
 /**
  * The orthogonal distance to the slider at which dragging "resets". This implements "snapping"
  */
 const POINTER_DRAG_RESET_DISTANCE = 140;
-export class AbstractScrollbar extends Widget {
+class AbstractScrollbar extends Widget {
     constructor(opts) {
         super();
         this._lazyRender = opts.lazyRender;
@@ -30,7 +31,7 @@ export class AbstractScrollbar extends Widget {
         this.domNode.setAttribute('aria-hidden', 'true');
         this._visibilityController.setDomNode(this.domNode);
         this.domNode.setPosition('absolute');
-        this._register(dom.addDisposableListener(this.domNode.domNode, dom.EventType.POINTER_DOWN, (e) => this._domNodePointerDown(e)));
+        this._register(addDisposableListener(this.domNode.domNode, EventType.POINTER_DOWN, (e) => this._domNodePointerDown(e)));
     }
     // ----------------- creation
     /**
@@ -59,7 +60,7 @@ export class AbstractScrollbar extends Widget {
         this.slider.setLayerHinting(true);
         this.slider.setContain('strict');
         this.domNode.domNode.appendChild(this.slider.domNode);
-        this._register(dom.addDisposableListener(this.slider.domNode, dom.EventType.POINTER_DOWN, (e) => {
+        this._register(addDisposableListener(this.slider.domNode, EventType.POINTER_DOWN, (e) => {
             if (e.button === 0) {
                 e.preventDefault();
                 this._sliderPointerDown(e);
@@ -149,15 +150,19 @@ export class AbstractScrollbar extends Widget {
             offsetY = e.offsetY;
         }
         else {
-            const domNodePosition = dom.getDomNodePagePosition(this.domNode.domNode);
+            const domNodePosition = getDomNodePagePosition(this.domNode.domNode);
             offsetX = e.pageX - domNodePosition.left;
             offsetY = e.pageY - domNodePosition.top;
         }
-        const offset = this._pointerDownRelativePosition(offsetX, offsetY);
-        this._setDesiredScrollPositionNow(this._scrollByPage
-            ? this._scrollbarState.getDesiredScrollPositionFromOffsetPaged(offset)
-            : this._scrollbarState.getDesiredScrollPositionFromOffset(offset));
-        if (e.button === 0) {
+        const isMouse = (e.pointerType === 'mouse');
+        const isLeftClick = (e.button === 0);
+        if (isLeftClick || !isMouse) {
+            const offset = this._pointerDownRelativePosition(offsetX, offsetY);
+            this._setDesiredScrollPositionNow(this._scrollByPage
+                ? this._scrollbarState.getDesiredScrollPositionFromOffsetPaged(offset)
+                : this._scrollbarState.getDesiredScrollPositionFromOffset(offset));
+        }
+        if (isLeftClick) {
             // left button
             e.preventDefault();
             this._sliderPointerDown(e);
@@ -174,7 +179,7 @@ export class AbstractScrollbar extends Widget {
         this._pointerMoveMonitor.startMonitoring(e.target, e.pointerId, e.buttons, (pointerMoveData) => {
             const pointerOrthogonalPosition = this._sliderOrthogonalPointerPosition(pointerMoveData);
             const pointerOrthogonalDelta = Math.abs(pointerOrthogonalPosition - initialPointerOrthogonalPosition);
-            if (platform.isWindows && pointerOrthogonalDelta > POINTER_DRAG_RESET_DISTANCE) {
+            if (isWindows && pointerOrthogonalDelta > POINTER_DRAG_RESET_DISTANCE) {
                 // The pointer has wondered away from the scrollbar => reset dragging
                 this._setDesiredScrollPositionNow(initialScrollbarState.getScrollPosition());
                 return;
@@ -205,3 +210,5 @@ export class AbstractScrollbar extends Widget {
         return this._scrollbarState.isNeeded();
     }
 }
+
+export { AbstractScrollbar };

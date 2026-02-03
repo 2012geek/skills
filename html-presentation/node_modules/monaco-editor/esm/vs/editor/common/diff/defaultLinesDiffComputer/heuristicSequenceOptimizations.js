@@ -1,11 +1,12 @@
+import { forEachWithNeighbors } from '../../../../base/common/arrays.js';
+import { OffsetRange } from '../../core/ranges/offsetRange.js';
+import { SequenceDiff, OffsetPair } from './algorithms/diffAlgorithm.js';
+
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-import { forEachWithNeighbors } from '../../../../base/common/arrays.js';
-import { OffsetRange } from '../../core/offsetRange.js';
-import { OffsetPair, SequenceDiff } from './algorithms/diffAlgorithm.js';
-export function optimizeSequenceDiffs(sequence1, sequence2, sequenceDiffs) {
+function optimizeSequenceDiffs(sequence1, sequence2, sequenceDiffs) {
     let result = sequenceDiffs;
     result = joinSequenceDiffsByShifting(sequence1, sequence2, result);
     // Sometimes, calling this function twice improves the result.
@@ -153,7 +154,7 @@ function shiftDiffToBetterPosition(diff, sequence1, sequence2, seq1ValidRange, s
     }
     return diff.delta(bestDelta);
 }
-export function removeShortMatches(sequence1, sequence2, sequenceDiffs) {
+function removeShortMatches(sequence1, sequence2, sequenceDiffs) {
     const result = [];
     for (const s of sequenceDiffs) {
         const last = result[result.length - 1];
@@ -170,7 +171,7 @@ export function removeShortMatches(sequence1, sequence2, sequenceDiffs) {
     }
     return result;
 }
-export function extendDiffsToEntireWordIfAppropriate(sequence1, sequence2, sequenceDiffs) {
+function extendDiffsToEntireWordIfAppropriate(sequence1, sequence2, sequenceDiffs, findParent, force = false) {
     const equalMappings = SequenceDiff.invert(sequenceDiffs, sequence1.length);
     const additional = [];
     let lastPoint = new OffsetPair(0, 0);
@@ -178,8 +179,8 @@ export function extendDiffsToEntireWordIfAppropriate(sequence1, sequence2, seque
         if (pair.offset1 < lastPoint.offset1 || pair.offset2 < lastPoint.offset2) {
             return;
         }
-        const w1 = sequence1.findWordContaining(pair.offset1);
-        const w2 = sequence2.findWordContaining(pair.offset2);
+        const w1 = findParent(sequence1, pair.offset1);
+        const w2 = findParent(sequence2, pair.offset2);
         if (!w1 || !w2) {
             return;
         }
@@ -195,8 +196,8 @@ export function extendDiffsToEntireWordIfAppropriate(sequence1, sequence2, seque
             if (!intersects) {
                 break;
             }
-            const v1 = sequence1.findWordContaining(next.seq1Range.start);
-            const v2 = sequence2.findWordContaining(next.seq2Range.start);
+            const v1 = findParent(sequence1, next.seq1Range.start);
+            const v2 = findParent(sequence2, next.seq2Range.start);
             // Because there is an intersection, we know that the words are not empty.
             const v = new SequenceDiff(v1, v2);
             const equalPart = v.intersect(next);
@@ -211,7 +212,7 @@ export function extendDiffsToEntireWordIfAppropriate(sequence1, sequence2, seque
                 break;
             }
         }
-        if (equalChars1 + equalChars2 < (w.seq1Range.length + w.seq2Range.length) * 2 / 3) {
+        if ((force && equalChars1 + equalChars2 < w.seq1Range.length + w.seq2Range.length) || equalChars1 + equalChars2 < (w.seq1Range.length + w.seq2Range.length) * 2 / 3) {
             additional.push(w);
         }
         lastPoint = w.getEndExclusives();
@@ -249,7 +250,7 @@ function mergeSequenceDiffs(sequenceDiffs1, sequenceDiffs2) {
     }
     return result;
 }
-export function removeVeryShortMatchingLinesBetweenDiffs(sequence1, _sequence2, sequenceDiffs) {
+function removeVeryShortMatchingLinesBetweenDiffs(sequence1, _sequence2, sequenceDiffs) {
     let diffs = sequenceDiffs;
     if (diffs.length === 0) {
         return diffs;
@@ -287,7 +288,7 @@ export function removeVeryShortMatchingLinesBetweenDiffs(sequence1, _sequence2, 
     } while (counter++ < 10 && shouldRepeat);
     return diffs;
 }
-export function removeVeryShortMatchingTextBetweenLongDiffs(sequence1, sequence2, sequenceDiffs) {
+function removeVeryShortMatchingTextBetweenLongDiffs(sequence1, sequence2, sequenceDiffs) {
     let diffs = sequenceDiffs;
     if (diffs.length === 0) {
         return diffs;
@@ -369,3 +370,5 @@ export function removeVeryShortMatchingTextBetweenLongDiffs(sequence1, sequence2
     });
     return newDiffs;
 }
+
+export { extendDiffsToEntireWordIfAppropriate, optimizeSequenceDiffs, removeShortMatches, removeVeryShortMatchingLinesBetweenDiffs, removeVeryShortMatchingTextBetweenLongDiffs };
