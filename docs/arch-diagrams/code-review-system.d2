@@ -1,0 +1,68 @@
+# Code Review System - 多代理代码审查
+direction: down
+
+# 用户层
+User: 用户 {
+  shape: person
+}
+
+# 核心审查层
+Reviewer: 主审查脚本
+
+# 代理层（并行执行）
+BugScanner1: Bug Scanner<br/>(Diff)
+BugScanner2: Bug Scanner<br/>(Diff-2)
+CodeAnalyzer: Code Analyzer
+SemanticAnalyzer: Semantic Analyzer
+PythonChecker: Python<br/>Checker
+PreCheck: Pre-check
+Validator: Issue Validator
+
+# 工具层
+Formatter: Comment Formatter
+API: GitCode API
+
+# 外部服务
+GitCode: GitCode<br/>Service
+
+# 主流程
+User -> Reviewer: 1.触发审查
+Reviewer -> PreCheck: 2.前置检查
+PreCheck --> Reviewer: 2.1.检查通过
+
+Reviewer -> API: 3.获取PR差异
+API --> GitCode: 3.1.请求
+GitCode --> API: 3.2.返回diff
+API --> Reviewer: 3.3.返回数据
+
+# 并行代理分析
+Reviewer --> BugScanner1: 4a.扫描
+Reviewer --> BugScanner2: 4b.扫描
+Reviewer --> CodeAnalyzer: 4c.分析
+Reviewer --> SemanticAnalyzer: 4d.分析
+Reviewer --> PythonChecker: 4e.检查
+
+BugScanner1 --> Reviewer: 5a.发现问题
+BugScanner2 --> Reviewer: 5b.发现问题
+CodeAnalyzer --> Reviewer: 5c.发现问题
+SemanticAnalyzer --> Reviewer: 5d.发现问题
+PythonChecker --> Reviewer: 5e.发现问题
+
+Reviewer --> Validator: 6.验证问题
+Validator --> Reviewer: 6.1.验证结果
+
+# 发布评论
+Reviewer -> Formatter: 7.格式化评论
+Formatter --> Reviewer: 7.1.返回格式化
+Reviewer -> API: 8.发布评论
+API --> GitCode: 8.1.提交评论
+GitCode --> API: 8.2.发布成功
+API --> Reviewer: 8.3.确认
+
+Reviewer --> User: 9.返回结果
+
+# 紧凑布局
+near: BugScanner1 & BugScanner2
+near: CodeAnalyzer & SemanticAnalyzer
+near: PythonChecker & Validator
+near: Formatter & API

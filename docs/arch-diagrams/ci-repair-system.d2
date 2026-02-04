@@ -1,0 +1,43 @@
+# GitCode CI Repair - 纯净流程版
+# 移除所有分组框，只保留核心流程和颜色编码
+
+direction: down
+
+# 核心组件（颜色编码层次）
+# 用户层（橙色系）
+User: 用户 {
+  shape: person
+}
+
+# 核心层（蓝色系）
+Controller: 控制器
+Parser: 解析器
+Generator: 生成器
+Executor: 执行器
+
+# 外部层（绿色系）
+GitCode: GitCode
+Repo: 本地仓库
+
+State: 状态器
+
+# 主流程连接
+User -> Controller: 1.启动修复
+Controller -> GitCode: 2.查询Labels
+GitCode --> Controller: 3.等待30秒或60秒
+GitCode --> Parser: 4.ci_failed触发修复
+GitCode --> User: 5.ci_successful成功
+Parser -> Generator: 6.解析失败详情
+Generator -> Executor: 7.生成修复方案
+Executor -> Repo: 8.执行修复命令
+Repo -> GitCode: 9.推送修复
+GitCode --> State: 10.更新迭代状态
+State --> Controller: 11.继续循环
+State --> User: 12.达到上限结束
+
+# 紧凑布局
+near: Controller & Parser
+near: Parser & Generator
+near: Generator & Executor
+near: Executor & GitCode
+near: GitCode & State

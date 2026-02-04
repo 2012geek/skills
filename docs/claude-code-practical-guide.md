@@ -140,7 +140,7 @@ class ACTPolicy(PreTrainedPolicy):
 
 #### 🏗️ 系统架构
 
-<img src="./assets/images/57bb395a-f768-422d-a26b-abd1e83ab9fc.png" width="1000"/>
+<img src="./arch-diagrams/code-review-system.svg" width="1000"/>
 
 #### ⚠️ 调试过程中的坑
 
@@ -207,7 +207,7 @@ def check_function_length(file_path, max_lines=50):
 
 #### 🏗️ 系统架构
 
-<img src="./assets/images/b001a433-df0e-4a8c-9ce7-380078ab86b7.png" width="1000"/>
+<img src="./arch-diagrams/pr-generation-system.svg" width="1000"/>
 
 #### ⚠️ 调试过程中的坑
 
@@ -262,6 +262,10 @@ def check_function_length(file_path, max_lines=50):
 3. 自动发送 `/retest`
 4. 检查门禁结果
 5. 失败则继续重试
+
+#### 🏗️ 系统架构
+
+<img src="./arch-diagrams/ci-repair-system.svg" width="1000"/>
 
 #### ⚠️ 调试过程中的坑
 

@@ -1,0 +1,48 @@
+# PR Generation System - 自动提PR系统
+direction: down
+
+# 用户层
+User: 开发者 {
+  shape: person
+}
+
+# 核心层
+PRGenerator: PR生成脚本
+
+# 处理层
+Analyzer: 代码分析器
+DescGenerator: 描述生成器
+TestGenerator: 测试用例生成器
+
+# 版本控制层
+Git: Git仓库
+
+# 外部服务
+GitCode: GitCode<br/>API
+
+# 主流程
+User -> Git: 1.提交代码
+Git --> PRGenerator: 2.触发PR生成
+
+PRGenerator -> Analyzer: 3.分析代码变更
+Analyzer --> PRGenerator: 3.1.返回变更信息
+
+PRGenerator -> DescGenerator: 4.生成PR描述
+DescGenerator --> PRGenerator: 4.1.返回描述内容
+
+PRGenerator -> TestGenerator: 5.生成测试用例
+TestGenerator --> PRGenerator: 5.1.返回测试模板
+
+PRGenerator -> Git: 6.创建PR分支
+Git --> PRGenerator: 6.1.分支创建成功
+
+PRGenerator -> GitCode: 7.创建Pull Request
+GitCode --> PRGenerator: 7.1.PR创建成功
+GitCode --> PRGenerator: 7.2.返回PR链接
+
+PRGenerator --> User: 8.返回完成通知
+
+# 紧凑布局
+near: Analyzer & DescGenerator
+near: TestGenerator & Git
+near: Git & GitCode
