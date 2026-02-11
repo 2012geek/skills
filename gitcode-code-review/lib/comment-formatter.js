@@ -46,6 +46,26 @@ const OFFICIAL_REFERENCES = {
   // 通用编程
   'error-handling': [
     { title: 'Clean Code - Error Handling', url: 'https://github.com/ryanmcdermott/clean-code-javascript#error-handling' }
+  ],
+
+  // Python dataclass 相关
+  'python_dataclass': [
+    { title: 'Python dataclasses 官方文档', url: 'https://docs.python.org/3/library/dataclasses.html' },
+    { title: 'PEP 557 - Data Classes', url: 'https://peps.python.org/pep-0557/' }
+  ],
+  'python_threading': [
+    { title: 'Python threading 官方文档', url: 'https://docs.python.org/3/library/threading.html' },
+    { title: 'Python threading.Lock() 说明', url: 'https://docs.python.org/3/library/threading.html#lock-objects' }
+  ],
+  'python_field': [
+    { title: 'dataclasses.field() 官方文档', url: 'https://docs.python.org/3/library/dataclasses.html#dataclasses.field' }
+  ],
+  'python_async': [
+    { title: 'Python asyncio 官方文档', url: 'https://docs.python.org/3/library/asyncio.html' }
+  ],
+  'python_mutable_default': [
+    { title: 'Python FAQ: Mutable Default Arguments', url: 'https://docs.python.org/3/faq/programming.html#why-are-default-values-shared-between-objects' },
+    { title: 'Effective Python: Avoid Mutable Defaults', url: 'https://effectivepython.com/2015/02/11/avoid-mutable-defaults/' }
   ]
 };
 
