@@ -112,6 +112,23 @@ color: red
 
 ## 输出格式
 
+**支持的文档类别**（根据问题类型选择相关类别）：
+
+| 类别 | 适用场景 |
+|------|----------|
+| `python_dataclass` | dataclass 相关问题 |
+| `python_threading` | threading/多线程相关问题 |
+| `python_field` | dataclasses.field() 相关 |
+| `python_mutable_default` | 可变默认值反模式 |
+| `python_async` | asyncio 异步编程 |
+| `argparse` | argparse 命令行参数解析 |
+| `shebang` | Shebang 行格式 |
+| `security` | 安全问题 |
+| `error_handling` | 错误处理 |
+| `file-io` | 文件 I/O 操作 |
+
+**注意**：如果不填写此字段，系统将根据关键词自动匹配参考资料。
+
 严格按照以下 JSON 格式输出：
 
 ```json
@@ -124,7 +141,8 @@ color: red
       "severity": "critical|error",
       "confidence": 95,
       "title": "简短描述问题",
-      "description": "详细说明为什么这是个问题"
+      "description": "详细说明为什么这是个问题",
+      "referenceCategories": ["python_dataclass"]
     }
   ]
 }
@@ -141,5 +159,6 @@ color: red
 | confidence | 置信度 0-100，只报告 >= 80 的 |
 | title | 问题标题，简洁明了 |
 | description | 问题描述 |
+| referenceCategories | array | 否 | 推荐的文档类别数组，系统将自动填充对应的官方文档链接 |
 
 请开始扫描。
