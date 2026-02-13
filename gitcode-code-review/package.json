@@ -1,0 +1,14 @@
+{
+  "name": "gitcode-code-review",
+  "version": "1.0.0",
+  "description": "GitCode Pull Request 自动代码审查",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest"
+  },
+  "keywords": ["gitcode", "code-review", "pull-request"],
+  "license": "MIT",
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}
