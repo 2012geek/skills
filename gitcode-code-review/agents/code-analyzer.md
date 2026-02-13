@@ -117,6 +117,23 @@ color: orange
 
 ## 输出格式
 
+**支持的文档类别**（根据问题类型选择相关类别）：
+
+| 类别 | 适用场景 |
+|------|----------|
+| `python_dataclass` | dataclass 相关问题 |
+| `python_threading` | threading/多线程相关问题 |
+| `python_field` | dataclasses.field() 相关 |
+| `python_mutable_default` | 可变默认值反模式 |
+| `python_async` | asyncio 异步编程 |
+| `argparse` | argparse 命令行参数解析 |
+| `shebang` | Shebang 行格式 |
+| `security` | 安全问题 |
+| `error_handling` | 错误处理 |
+| `file-io` | 文件 I/O 操作 |
+
+**注意**：如果不填写此字段，系统将根据关键词自动匹配参考资料。
+
 严格按照以下 JSON 格式输出：
 
 ```json
@@ -134,11 +151,27 @@ color: orange
       "fix": {
         "code": "修复代码",
         "explanation": "修复说明"
-      }
+      },
+      "referenceCategories": ["python_dataclass", "python_mutable_default"]
     }
   ]
 }
 ```
+
+## 字段说明
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| file | string | 是 | 文件路径（相对于仓库根目录） |
+| line | number | 是 | 问题行号（在新文件中的行号） |
+| type | string | 是 | 问题类型：security, logic, performance, error_handling |
+| severity | string | 是 | 严重程度：critical, error, warning |
+| confidence | number | 是 | 置信度 0-100，只报告 >= 80 |
+| title | string | 是 | 问题标题 |
+| description | string | 是 | 详细描述 |
+| contextCode | string | 是 | 上下文代码 |
+| fix | object | 是 | 修复方案（code + explanation） |
+| referenceCategories | array | 否 | 推荐的文档类别数组，系统将自动填充对应的官方文档链接 |
 
 ## 置信度标准
 
