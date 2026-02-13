@@ -150,64 +150,88 @@ class CommentFormatter {
   }
 
   /**
+   * 对参考资料列表进行去重（根据 URL）
+   * @param {Array} refs - 参考资料数组
+   * @returns {Array} 去重后的参考资料数组
+   */
+  deduplicateRefs(refs) {
+    const seen = new Set();
+    return refs.filter(ref => {
+      if (seen.has(ref.url)) return false;
+      seen.add(ref.url);
+      return true;
+    });
+  }
+
+  /**
    * 根据问题类型和内容自动添加官方参考资料
    */
   addOfficialReferences(issue, body) {
-    // 如果已经有用户提供的参考资料，跳过
+    // 如果用户提供了完整的 references（包括 URL），优先使用
     if (issue.references && issue.references.length > 0) {
+      body += `**官方参考资料**:\n`;
+      const uniqueRefs = this.deduplicateRefs(issue.references);
+      for (const ref of uniqueRefs) {
+        body += `- [${ref.title}](${ref.url})\n`;
+      }
+      body += `\n`;
       return body;
     }
 
     const refs = [];
 
-    // 根据问题内容匹配参考资料
-    const content = (issue.title + issue.description + (issue.contextCode || '')).toLowerCase();
-
-    // Python argparse / bool 相关
-    if (content.includes('argparse') || content.includes('type=bool') || content.includes('add_argument')) {
-      refs.push(...OFFICIAL_REFERENCES.argparse);
-    }
-    if (content.includes('bool') && content.includes('argparse')) {
-      refs.push(...OFFICIAL_REFERENCES.bool);
-    }
-
-    // Shebang 相关
-    if (content.includes('shebang') || content.includes('#!')) {
-      refs.push(...OFFICIAL_REFERENCES.shebang);
-    }
-
-    // 文件 I/O 相关
-    if (content.includes('file') || content.includes('path') || content.includes('os.path') || content.includes('open(')) {
-      refs.push(...OFFICIAL_REFERENCES['file-io']);
-    }
-
-    // 安全相关
-    if (issue.type === 'security' || content.includes('sql') || content.includes('inject') || content.includes('xss')) {
-      if (content.includes('sql') && content.includes('inject')) {
-        refs.push(...OFFICIAL_REFERENCES['sql-injection']);
-      } else if (content.includes('xss')) {
-        refs.push(...OFFICIAL_REFERENCES.xss);
-      } else {
-        refs.push(...OFFICIAL_REFERENCES.security);
-      }
-    }
-
-    // JavaScript 异步相关
-    if (content.includes('async') || content.includes('await') || content.includes('promise')) {
-      refs.push(...OFFICIAL_REFERENCES.async);
-    }
-
-    // 添加匹配到的参考资料
-    if (refs.length > 0) {
-      body += `**官方参考资料**:\n`;
-      const uniqueRefs = [];
-      const seenUrls = new Set();
-      for (const ref of refs) {
-        if (!seenUrls.has(ref.url)) {
-          uniqueRefs.push(ref);
-          seenUrls.add(ref.url);
+    // 1. 优先使用 Agent 推荐的类别
+    if (issue.referenceCategories && Array.isArray(issue.referenceCategories)) {
+      for (const category of issue.referenceCategories) {
+        if (OFFICIAL_REFERENCES[category]) {
+          refs.push(...OFFICIAL_REFERENCES[category]);
         }
       }
+    }
+
+    // 2. 如果没有类别推荐，使用关键词匹配作为后备
+    if (refs.length === 0) {
+      const content = (issue.title + issue.description + (issue.contextCode || '')).toLowerCase();
+
+      // Python argparse / bool 相关
+      if (content.includes('argparse') || content.includes('type=bool') || content.includes('add_argument')) {
+        refs.push(...OFFICIAL_REFERENCES.argparse);
+      }
+      if (content.includes('bool') && content.includes('argparse')) {
+        refs.push(...OFFICIAL_REFERENCES.bool);
+      }
+
+      // Shebang 相关
+      if (content.includes('shebang') || content.includes('#!')) {
+        refs.push(...OFFICIAL_REFERENCES.shebang);
+      }
+
+      // 文件 I/O 相关
+      if (content.includes('file') || content.includes('path') || content.includes('os.path') || content.includes('open(')) {
+        refs.push(...OFFICIAL_REFERENCES['file-io']);
+      }
+
+      // 安全相关
+      if (issue.type === 'security' || content.includes('sql') || content.includes('inject') || content.includes('xss')) {
+        if (content.includes('sql') && content.includes('inject')) {
+          refs.push(...OFFICIAL_REFERENCES['sql-injection']);
+        } else if (content.includes('xss')) {
+          refs.push(...OFFICIAL_REFERENCES.xss);
+        } else {
+          refs.push(...OFFICIAL_REFERENCES.security);
+        }
+      }
+
+      // JavaScript 异步相关
+      if (content.includes('async') || content.includes('await') || content.includes('promise')) {
+        refs.push(...OFFICIAL_REFERENCES.async);
+      }
+    }
+
+    // 3. 添加匹配到的参考资料
+    if (refs.length > 0) {
+      body += `**官方参考资料**:\n`;
+      const uniqueRefs = this.deduplicateRefs(refs);
       for (const ref of uniqueRefs) {
         body += `- [${ref.title}](${ref.url})\n`;
       }
