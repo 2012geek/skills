@@ -165,6 +165,23 @@ for key in input_features:                    # 第 45 行
 
 ## 输出格式
 
+**支持的文档类别**（根据问题类型选择相关类别）：
+
+| 类别 | 适用场景 |
+|------|----------|
+| `python_dataclass` | dataclass 相关问题 |
+| `python_threading` | threading/多线程相关问题 |
+| `python_field` | dataclasses.field() 相关 |
+| `python_mutable_default` | 可变默认值反模式 |
+| `python_async` | asyncio 异步编程 |
+| `argparse` | argparse 命令行参数解析 |
+| `shebang` | Shebang 行格式 |
+| `security` | 安全问题 |
+| `error_handling` | 错误处理 |
+| `file-io` | 文件 I/O 操作 |
+
+**注意**：如果不填写此字段，系统将根据关键词自动匹配参考资料。
+
 严格按照以下 JSON 格式输出：
 
 ```json
@@ -183,6 +200,7 @@ for key in input_features:                    # 第 45 行
         "code": "修复后的代码",
         "explanation": "修复的思路和原理"
       },
+      "referenceCategories": ["python_dataclass"],
       "references": [
         {
           "title": "相关文档标题",
@@ -207,7 +225,8 @@ for key in input_features:                    # 第 45 行
 | description | string | 是 | 详细描述 |
 | contextCode | string | 是 | 上下文代码 |
 | fix | object | 是 | 修复方案 |
-| references | array | 否 | 参考资料 |
+| referenceCategories | array | 否 | 推荐的文档类别数组，系统将自动填充对应的官方文档链接 |
+| references | array | 否 | 直接提供的参考资料（包含 title 和 url），优先级高于 referenceCategories |
 
 ## 置信度标准
 
