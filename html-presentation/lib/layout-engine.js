@@ -68,17 +68,17 @@ class LayoutEngine {
     const { codeRatio = 0, imageRatio = 0, textRatio = 0, firstElementIsImage = false } = metrics;
 
     // Code-heavy slides (check more specific first)
-    if (codeRatio > 0.9) return 'code-full';
-    if (codeRatio > 0.6) return 'code-focus';
+    if (codeRatio >= 0.9) return 'code-full';
+    if (codeRatio >= 0.6) return 'code-focus';
 
     // Image-heavy slides (check more specific first)
-    if (imageRatio > 0.9) return 'image-full';
-    if (imageRatio > 0.6) return 'image-focus';
+    if (imageRatio >= 0.9) return 'image-full';
+    if (imageRatio >= 0.6) return 'image-focus';
 
     // Balanced content
-    if (codeRatio > 0.3 && imageRatio > 0.2) return 'two-col-image';
-    if (codeRatio > 0.3) return 'two-col';
-    if (imageRatio > 0.3) {
+    if (codeRatio >= 0.3 && imageRatio >= 0.2) return 'two-col-image';
+    if (codeRatio >= 0.3) return 'two-col';
+    if (imageRatio >= 0.3) {
       return firstElementIsImage ? 'image-left' : 'image-right';
     }
 
