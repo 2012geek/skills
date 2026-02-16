@@ -13,7 +13,14 @@
     "dev:opt:full": "node scripts/build.js --optimize --optimize-level full",
     "optimize": "node scripts/optimizer.js",
     "optimize:basic": "node scripts/optimizer.js --level basic",
-    "optimize:full": "node scripts/optimizer.js --level full"
+    "optimize:full": "node scripts/optimizer.js --level full",
+    "test": "jest",
+    "test:unit": "jest tests/unit",
+    "test:integration": "jest tests/integration",
+    "test:e2e": "jest tests/e2e",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "health": "node -e 'require(\"./core/index.js\").HealthChecker.check()'"
   },
   "keywords": [
     "presentation",
@@ -31,6 +38,16 @@
   "devDependencies": {
     "@slidev/cli": "^52.11.5",
     "@slidev/theme-default": "latest",
-    "@slidev/theme-seriph": "^0.25.0"
+    "@slidev/theme-seriph": "^0.25.0",
+    "jest": "^30.2.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "coverageDirectory": "coverage",
+    "collectCoverageFrom": [
+      "core/**/*.js",
+      "lib/**/*.js",
+      "preview/**/*.js"
+    ]
   }
 }
