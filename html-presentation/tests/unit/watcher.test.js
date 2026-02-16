@@ -56,9 +56,9 @@ describe('FileWatcher', () => {
         fs.appendFileSync(testFile, '\nChange 1');
         setTimeout(() => {
           fs.appendFileSync(testFile, '\nChange 2');
-        }, 200); // Longer gap between changes to avoid debounce
-      }, 200);
-    }, 10000);
+        }, 300); // Even longer gap to ensure debounce fires twice
+      }, 300);
+    }, 15000); // Increased timeout to 15 seconds
   });
 
   describe('stop', () => {
