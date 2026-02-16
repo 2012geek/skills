@@ -4,6 +4,7 @@
  */
 
 const { spawn } = require('child_process');
+const path = require('path');
 const { PlatformDetector } = require('../core/platform-detector');
 const { FileWatcher } = require('./watcher');
 
@@ -50,14 +51,38 @@ class PreviewManager {
   async _startSlidevServer(inputFile, port) {
     return new Promise((resolve, reject) => {
       const args = ['--port', port.toString(), inputFile];
-      const slidevPath = require.resolve('@slidev/cli/bin/slidev.js');
+      // Use node to run the slidev binary
+      const slidevPath = path.join(__dirname, '../node_modules/.bin/slidev');
 
+      console.log(`Starting Slidev server on port ${port}...`);
+
+      // Use node directly with the slidev CLI
       this.server = spawn('node', [slidevPath, ...args], {
         stdio: 'pipe',
         env: { ...process.env }
       });
 
-      this.server.on('error', reject);
+      // Log server output
+      this.server.stdout.on('data', (data) => {
+        const output = data.toString().trim();
+        if (output) {
+          console.log(`[Slidev] ${output}`);
+        }
+      });
+
+      this.server.stderr.on('data', (data) => {
+        const output = data.toString().trim();
+        // Filter out deprecation warnings
+        if (output && !output.includes('DEP0190') && !output.includes('localstorage-file')) {
+          console.error(`[Slidev] ${output}`);
+        }
+      });
+
+      this.server.on('error', (err) => {
+        console.error('Failed to start Slidev server:', err);
+        reject(err);
+      });
+
       this.server.on('close', (code) => {
         if (code !== 0 && code !== null) {
           console.error(`Slidev server exited with code ${code}`);
@@ -66,8 +91,9 @@ class PreviewManager {
 
       // Give server time to start
       setTimeout(() => {
+        console.log('Slidev server started successfully');
         resolve(this.server);
-      }, 2000);
+      }, 3000);
     });
   }
 
