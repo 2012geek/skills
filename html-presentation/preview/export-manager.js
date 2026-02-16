@@ -165,7 +165,8 @@ class ExportManager {
         window.location.hash = `#${index}`;
       }, i + 1);
 
-      await page.waitForTimeout(500);
+      // Use setTimeout instead of waitForTimeout
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       const outputPath = path.join(outputDir, `slide-${i + 1}.png`);
       await page.screenshot({ path: outputPath });
