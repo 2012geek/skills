@@ -23,7 +23,9 @@
     "health": "node -e '(async () => { const { HealthChecker } = require(\"./core/index.js\"); const checker = new HealthChecker(); const report = await checker.check(); console.log(JSON.stringify(report, null, 2)); })()'",
     "generate": "node cli.js generate",
     "analyze": "node cli.js analyze",
-    "recommend": "node cli.js recommend"
+    "recommend": "node cli.js recommend",
+    "preview": "node cli.js preview",
+    "export": "node cli.js export"
   },
   "keywords": [
     "presentation",
