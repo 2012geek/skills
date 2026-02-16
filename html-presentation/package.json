@@ -38,7 +38,8 @@
     "chokidar": "^3.6.0",
     "commander": "^11.1.0",
     "js-yaml": "^4.1.0",
-    "marked": "^11.2.0"
+    "marked": "^11.2.0",
+    "puppeteer": "^24.37.3"
   },
   "devDependencies": {
     "@slidev/cli": "^52.11.5",
