@@ -1,7 +1,7 @@
 {
   "name": "slidev-presentation-skill",
-  "version": "4.0.0",
-  "description": "Slidev Presentation Builder - Markdown to Slidev presentations with dev mode and LLM optimization",
+  "version": "5.0.0",
+  "description": "Slidev Presentation Builder - Markdown to Slidev presentations with intelligent content processing",
   "main": "scripts/build.js",
   "scripts": {
     "build": "node scripts/build.js",
@@ -20,7 +20,10 @@
     "test:e2e": "jest tests/e2e",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "health": "node -e '(async () => { const { HealthChecker } = require(\"./core/index.js\"); const checker = new HealthChecker(); const report = await checker.check(); console.log(JSON.stringify(report, null, 2)); })()'"
+    "health": "node -e '(async () => { const { HealthChecker } = require(\"./core/index.js\"); const checker = new HealthChecker(); const report = await checker.check(); console.log(JSON.stringify(report, null, 2)); })()'",
+    "generate": "node cli.js generate",
+    "analyze": "node cli.js analyze",
+    "recommend": "node cli.js recommend"
   },
   "keywords": [
     "presentation",
@@ -32,6 +35,7 @@
   "author": "Claude Code",
   "license": "MIT",
   "dependencies": {
+    "commander": "^11.1.0",
     "js-yaml": "^4.1.0",
     "marked": "^11.2.0"
   },
