@@ -20,7 +20,7 @@
     "test:e2e": "jest tests/e2e",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "health": "node -e 'require(\"./core/index.js\").HealthChecker.check()'"
+    "health": "node -e '(async () => { const { HealthChecker } = require(\"./core/index.js\"); const checker = new HealthChecker(); const report = await checker.check(); console.log(JSON.stringify(report, null, 2)); })()'"
   },
   "keywords": [
     "presentation",
