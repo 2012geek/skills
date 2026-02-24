@@ -20,6 +20,18 @@ npm test
 npm run dev
 ```
 
+## Auto-Verification
+
+Slides can be automatically verified for overflow and aesthetic issues during generation using the `--verify` flag. The verification system uses real-time rendering and LLM judgment to detect and fix layout problems. See [docs/verification-system.md](docs/verification-system.md) for details.
+
+```bash
+# Enable verification during build
+node build.js slides.md output.html --mode build --verify
+
+# Disable verification if needed
+node build.js slides.md output.html --mode build --no-verify
+```
+
 ## Development Status
 
 ### ✅ Phase 1: Foundation (COMPLETE)
@@ -59,6 +71,7 @@ npm run dev
 - [Phase 1 Summary](docs/phase1-foundation.md)
 - [Phase 2 Summary](docs/phase2-content-processing.md)
 - [Phase 3 Summary](docs/phase3-preview-system.md)
+- [Verification System](docs/verification-system.md)
 - [Complete Design Document](../docs/plans/2026-02-15-html-presentation-optimization-design.md)
 - [Implementation Plan](../docs/plans/2026-02-15-html-presentation-implementation.md)
 
