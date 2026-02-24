@@ -30,10 +30,13 @@ function transformSlides(slides) {
   // Generate smart CSS based on layout
   const css = generateSmartCSS({ layout });
 
-  // Inject CSS into the first slide's content
+  // Inject CSS into the first slide's frontmatter style field
   if (css) {
-    const styleBlock = `<style>\n${css}\n</style>`;
-    firstSlide.content = `${styleBlock}\n\n${firstSlide.content || ''}`;
+    const existingStyle = firstSlide.frontmatter?.style || '';
+    firstSlide.frontmatter.style = existingStyle ? `${existingStyle}\n${css}` : css;
+
+    // Remove rawFrontmatter to force reconstruction with modified frontmatter
+    delete firstSlide.rawFrontmatter;
   }
 
   return transformedSlides;
