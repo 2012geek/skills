@@ -20,6 +20,11 @@ function reconstructMarkdown(slides) {
     const frontmatter = slide.frontmatter || {};
     const content = slide.content || '';
 
+    // Use raw frontmatter if available (preserves original YAML formatting)
+    if (slide.rawFrontmatter) {
+      return `${slide.rawFrontmatter}\n\n${content}`;
+    }
+
     // Build frontmatter section
     let frontmatterSection = '';
     if (Object.keys(frontmatter).length > 0) {

@@ -26,10 +26,12 @@ function parseSlides(markdown) {
     const frontmatterMatch = remaining.match(FRONTMATTER_REGEX);
 
     let frontmatter = {};
+    let rawFrontmatter = null;
     let contentStart = 0;
 
     if (frontmatterMatch) {
       frontmatter = parseSimpleYaml(frontmatterMatch[1]);
+      rawFrontmatter = frontmatterMatch[0]; // Preserve raw frontmatter including ---
       contentStart = frontmatterMatch[0].length;
     }
 
@@ -63,6 +65,7 @@ function parseSlides(markdown) {
       slides.push({
         index: index++,
         frontmatter,
+        rawFrontmatter, // Preserve raw frontmatter for reconstruction
         content: slideContent
       });
     }
