@@ -111,7 +111,10 @@ async function startDevMode(inputPath, config) {
   // Generate Slidev markdown first
   const { generateSlidevMarkdown: generateSlidevMd } = require('./slidev-generator');
   const tempPath = path.join(process.cwd(), '.slidev-temp-dev.md');
-  await generateSlidevMd(inputForBuild, tempPath, { optimizeSlides: true });
+  await generateSlidevMd(inputForBuild, tempPath, {
+    optimizeSlides: true,
+    verifySlides: config.verifySlides || false
+  });
 
   const slidevBin = path.join(__dirname, '../node_modules/@slidev/cli/bin/slidev.mjs');
   const useNpx = !fs.existsSync(slidevBin);
@@ -184,7 +187,10 @@ async function build(inputPath, outputPath, config = {}) {
 
   // Generate to temp file with LLM optimization
   const tempOptimizedPath = path.join(process.cwd(), '.slidev-optimized.md');
-  await generateSlidevMd(inputPath, tempOptimizedPath, { optimizeSlides: true });
+  await generateSlidevMd(inputPath, tempOptimizedPath, {
+    optimizeSlides: true,
+    verifySlides: config.verifySlides || false
+  });
 
   // Use the optimized markdown for build
   const inputForBuild = tempOptimizedPath;
@@ -232,6 +238,13 @@ Content Optimization:
                          full:  LLM-powered content optimization
                          Requires ANTHROPIC_API_KEY for 'full' level
 
+Slide Verification:
+  --verify              Enable slide verification with auto-fix (default: disabled)
+                         Captures screenshots and checks for layout issues
+                         Automatically fixes overflow and aesthetic problems
+                         Requires ANTHROPIC_API_KEY and Puppeteer
+                         Slower but ensures high-quality output
+
 Theme Options:
   --theme <name>        Theme for Slidev
                          ${SLIDEV_THEMES.join(', ')}
@@ -255,6 +268,9 @@ Examples:
 
   # Build with LLM-powered optimization (requires API key)
   node build.js slides.md output.html --mode build --optimize --optimize-level full
+
+  # Build with slide verification and auto-fix (requires API key)
+  node build.js slides.md output.html --mode build --verify
 
   # Dev mode with custom port
   node build.js slides.md --port 8080
@@ -336,6 +352,8 @@ Speaker Notes (Dev mode only):
       config.optimizeLevel = args[++i];
     } else if (args[i] === '--no-line-numbers') {
       config.lineNumbers = false;
+    } else if (args[i] === '--verify') {
+      config.verifySlides = true;
     }
   }
 

@@ -187,7 +187,83 @@ class SlideProcessor {
       this.slides = await this.slideOptimizer.optimizeAllSlides(this.slides);
     }
 
+    // Verify and fix each slide individually if verification is enabled
+    if (this.options.verifySlides && process.env.ANTHROPIC_API_KEY) {
+      console.log(`🔍 Verifying ${this.slides.length} slides...`);
+      for (let i = 0; i < this.slides.length; i++) {
+        const slide = this.slides[i];
+        console.log(`  [Slide ${i + 1}/${this.slides.length}] ${slide.title || '(untitled)'}`);
+        this.slides[i].content = await this.verifyAndFix(slide.content, 3);
+      }
+    }
+
     return this.slides;
+  }
+
+  async verifyAndFix(markdown, maxIterations = 3) {
+    const SlideVerifier = require('./overflow-verifier');
+    const LLMSlideFixer = require('./llm-slide-fixer');
+    const Anthropic = require('@anthropic-ai/sdk');
+    const fs = require('fs').promises;
+    const path = require('path');
+    const crypto = require('crypto');
+
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const verifier = new SlideVerifier();
+    const fixer = new LLMSlideFixer();
+
+    let currentMarkdown = markdown;
+    let previousHash = '';
+
+    try {
+      for (let i = 0; i < maxIterations; i++) {
+        console.log(`  [Verification ${i + 1}/${maxIterations}]`);
+
+        const { screenshot, basicInfo } = await verifier.verify(currentMarkdown);
+        console.log(`    - Captured: ${basicInfo.title}`);
+        console.log(`    - Overflow: V=${basicInfo.vOverflow}, H=${basicInfo.hOverflow}`);
+
+        const judgmentPrompt = await fs.readFile(path.join(__dirname, '../agents/slide-judgment.md'), 'utf-8');
+        const judgmentResponse = await client.messages.create({
+          model: 'claude-3-5-sonnet-20241022',
+          max_tokens: 1024,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'text', text: judgmentPrompt },
+              { type: 'image', source: { type: 'base64', media_type: 'image/png', data: screenshot.toString('base64') } }
+            ]
+          }]
+        });
+
+        const judgment = JSON.parse(judgmentResponse.content[0].text);
+        console.log(`    - Score: ${judgment.score}/100, Needs Fix: ${judgment.needsFix}`);
+
+        if (!judgment.needsFix && judgment.score >= 80) {
+          console.log(`    ✅ Slide approved`);
+          await verifier.cleanup();
+          return currentMarkdown;
+        }
+
+        console.log(`    - Issues: ${judgment.issues.join(', ')}`);
+        currentMarkdown = await fixer.fix(currentMarkdown, judgment);
+
+        const currentHash = crypto.createHash('md5').update(currentMarkdown).digest('hex');
+        if (currentHash === previousHash) {
+          console.log(`    ⚠️  No change detected, stopping`);
+          break;
+        }
+        previousHash = currentHash;
+      }
+
+      await verifier.cleanup();
+      return currentMarkdown;
+    } catch (error) {
+      console.warn(`    ⚠️  Verification failed: ${error.message}`);
+      console.warn(`    📄 Using original content`);
+      await verifier.cleanup();
+      return markdown;
+    }
   }
 
   finalizeSlide() {
