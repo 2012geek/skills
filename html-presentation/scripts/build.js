@@ -244,6 +244,13 @@ Slide Verification:
                          Automatically fixes overflow and aesthetic problems
                          Requires ANTHROPIC_API_KEY and Puppeteer
                          Slower but ensures high-quality output
+  --no-verify           Explicitly disable verification (overrides VERIFY_ENABLED env var)
+
+  Environment Variables:
+  VERIFY_ENABLED        Enable verification (default: true, set 'false' to disable)
+  VERIFY_MAX_ITERATIONS Max verification iterations (default: 3)
+  VERIFY_SCORE_THRESHOLD Minimum score to accept slide (default: 80)
+  VERIFY_TIMEOUT        API timeout in milliseconds (default: 15000)
 
 Theme Options:
   --theme <name>        Theme for Slidev
@@ -354,6 +361,8 @@ Speaker Notes (Dev mode only):
       config.lineNumbers = false;
     } else if (args[i] === '--verify') {
       config.verifySlides = true;
+    } else if (args[i] === '--no-verify') {
+      config.verifySlides = false;
     }
   }
 

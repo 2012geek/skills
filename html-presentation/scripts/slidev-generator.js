@@ -12,6 +12,15 @@ const path = require('path');
 const { SlideOptimizer } = require('../lib/slide-optimizer.js');
 
 // ============================================================================
+// VERIFICATION CONFIGURATION
+// ============================================================================
+
+const VERIFY_ENABLED = process.env.VERIFY_ENABLED !== 'false';
+const VERIFY_MAX_ITERATIONS = parseInt(process.env.VERIFY_MAX_ITERATIONS || '3');
+const VERIFY_SCORE_THRESHOLD = parseInt(process.env.VERIFY_SCORE_THRESHOLD || '80');
+const VERIFY_TIMEOUT = parseInt(process.env.VERIFY_TIMEOUT || '15000');
+
+// ============================================================================
 // CONFIGURATION
 // ============================================================================
 
@@ -188,19 +197,32 @@ class SlideProcessor {
     }
 
     // Verify and fix each slide individually if verification is enabled
-    if (this.options.verifySlides && process.env.ANTHROPIC_API_KEY) {
-      console.log(`🔍 Verifying ${this.slides.length} slides...`);
-      for (let i = 0; i < this.slides.length; i++) {
-        const slide = this.slides[i];
-        console.log(`  [Slide ${i + 1}/${this.slides.length}] ${slide.title || '(untitled)'}`);
-        this.slides[i].content = await this.verifyAndFix(slide.content, 3);
+    if (this.options.verifySlides) {
+      if (!process.env.ANTHROPIC_API_KEY) {
+        console.warn('\n⚠️  --verify flag specified but ANTHROPIC_API_KEY not found');
+        console.warn('   Skipping slide verification');
+      } else {
+        const MAX_SLIDES = 50;
+        if (this.slides.length > MAX_SLIDES) {
+          console.warn(`\n⚠️  Warning: ${this.slides.length} slides exceeds recommended limit of ${MAX_SLIDES}`);
+          console.warn(`   Verification may take a very long time (~${Math.ceil(this.slides.length * 10 / 60)} minutes estimated)`);
+          console.warn(`   To skip verification, run without the --verify flag`);
+        }
+
+        console.log(`🔍 Verifying ${this.slides.length} slides...`);
+        console.log(`   Config: maxIterations=${VERIFY_MAX_ITERATIONS}, scoreThreshold=${VERIFY_SCORE_THRESHOLD}`);
+        for (let i = 0; i < this.slides.length; i++) {
+          const slide = this.slides[i];
+          console.log(`  [Slide ${i + 1}/${this.slides.length}] ${slide.title || '(untitled)'}`);
+          this.slides[i].content = await this.verifyAndFix(slide.content, VERIFY_MAX_ITERATIONS);
+        }
       }
     }
 
     return this.slides;
   }
 
-  async verifyAndFix(markdown, maxIterations = 3) {
+  async verifyAndFix(markdown, maxIterations = VERIFY_MAX_ITERATIONS) {
     const SlideVerifier = require('./overflow-verifier');
     const LLMSlideFixer = require('./llm-slide-fixer');
     const Anthropic = require('@anthropic-ai/sdk');
@@ -208,7 +230,7 @@ class SlideProcessor {
     const path = require('path');
     const crypto = require('crypto');
 
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: VERIFY_TIMEOUT });
     const verifier = new SlideVerifier();
     const fixer = new LLMSlideFixer();
 
@@ -239,9 +261,8 @@ class SlideProcessor {
         const judgment = JSON.parse(judgmentResponse.content[0].text);
         console.log(`    - Score: ${judgment.score}/100, Needs Fix: ${judgment.needsFix}`);
 
-        if (!judgment.needsFix && judgment.score >= 80) {
+        if (!judgment.needsFix && judgment.score >= VERIFY_SCORE_THRESHOLD) {
           console.log(`    ✅ Slide approved`);
-          await verifier.cleanup();
           return currentMarkdown;
         }
 
@@ -255,14 +276,17 @@ class SlideProcessor {
         }
         previousHash = currentHash;
       }
-
-      await verifier.cleanup();
       return currentMarkdown;
     } catch (error) {
       console.warn(`    ⚠️  Verification failed: ${error.message}`);
       console.warn(`    📄 Using original content`);
-      await verifier.cleanup();
       return markdown;
+    } finally {
+      try {
+        await verifier.cleanup();
+      } catch (cleanupError) {
+        console.warn(`    ⚠️  Cleanup warning: ${cleanupError.message}`);
+      }
     }
   }
 
