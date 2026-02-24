@@ -22,7 +22,7 @@ function reconstructMarkdown(slides) {
 
     // Use raw frontmatter if available (preserves original YAML formatting)
     if (slide.rawFrontmatter) {
-      return `${slide.rawFrontmatter}\n\n${content}`;
+      return `---\n${slide.rawFrontmatter}\n---\n\n${content}`;
     }
 
     // Build frontmatter section

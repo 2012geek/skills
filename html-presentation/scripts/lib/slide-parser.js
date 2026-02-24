@@ -31,7 +31,7 @@ function parseSlides(markdown) {
 
     if (frontmatterMatch) {
       frontmatter = parseSimpleYaml(frontmatterMatch[1]);
-      rawFrontmatter = frontmatterMatch[0]; // Preserve raw frontmatter including ---
+      rawFrontmatter = frontmatterMatch[1]; // Preserve raw frontmatter content (without ---)
       contentStart = frontmatterMatch[0].length;
     }
 
