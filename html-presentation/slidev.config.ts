@@ -21,6 +21,7 @@ export default defineConfig({
   },
   class: 'text-left',
   vite: {
+    publicDir: 'public',
     assetsInclude: ['**/*.png', '**/*.jpg', '**/*.jpeg', '**/*.gif', '**/*.svg', '**/*.webp'],
   },
   css: `

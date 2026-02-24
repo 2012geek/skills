@@ -66,19 +66,25 @@ function test() {
     const slidevGeneratorCode = fs.readFileSync(path.join(__dirname, '../scripts/slidev-generator.js'), 'utf-8');
 
     const hasVerifyMethod = slidevGeneratorCode.includes('async verifyAndFix');
-    const hasVerifyCall = slidevGeneratorCode.includes('verifySlides && process.env.ANTHROPIC_API_KEY');
+    // Check for the improved pattern: explicit API key check with warning
+    const hasVerifyCall = slidevGeneratorCode.includes('verifySlides') &&
+                         slidevGeneratorCode.includes('ANTHROPIC_API_KEY') &&
+                         slidevGeneratorCode.includes('--verify flag specified but ANTHROPIC_API_KEY not found');
     const hasIterativeLoop = slidevGeneratorCode.includes('for (let i = 0; i < maxIterations') && slidevGeneratorCode.includes('verification');
+    const hasCleanupPattern = slidevGeneratorCode.includes('finally {') && slidevGeneratorCode.includes('verifier.cleanup()');
 
-    if (hasVerifyMethod && hasVerifyCall && hasIterativeLoop) {
+    if (hasVerifyMethod && hasVerifyCall && hasIterativeLoop && hasCleanupPattern) {
       console.log('✅ Verification integration found in code');
       console.log(`   - verifyAndFix method: ${hasVerifyMethod}`);
       console.log(`   - verifySlides check: ${hasVerifyCall}`);
-      console.log(`   - Iterative loop: ${hasIterativeLoop}\n`);
+      console.log(`   - Iterative loop: ${hasIterativeLoop}`);
+      console.log(`   - Cleanup pattern: ${hasCleanupPattern}\n`);
     } else {
       console.log('❌ Verification integration NOT complete');
       console.log(`   - verifyAndFix method: ${hasVerifyMethod}`);
       console.log(`   - verifySlides check: ${hasVerifyCall}`);
-      console.log(`   - Iterative loop: ${hasIterativeLoop}\n`);
+      console.log(`   - Iterative loop: ${hasIterativeLoop}`);
+      console.log(`   - Cleanup pattern: ${hasCleanupPattern}\n`);
       process.exit(1);
     }
 
