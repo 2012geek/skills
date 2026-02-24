@@ -424,4 +424,77 @@ body { color: red; }
       expect(result).toContain('## Comparison');
     });
   });
+
+  describe('rawFrontmatter preservation', () => {
+    test('should prioritize rawFrontmatter over parsed frontmatter object', () => {
+      const slides = [
+        {
+          index: 0,
+          rawFrontmatter: 'layout: center\ntransition: slide-left\nenabled: true\nconfig:\n  nested: value',
+          frontmatter: {
+            // This is the parsed version which may lose type info
+            layout: 'center',
+            enabled: 'true', // String instead of boolean
+            config: '[object Object]' // Flattened object
+          },
+          content: '# Title'
+        }
+      ];
+
+      const result = reconstructMarkdown(slides);
+
+      // Should use rawFrontmatter, not the parsed frontmatter
+      expect(result).toContain('layout: center');
+      expect(result).toContain('transition: slide-left');
+      expect(result).toContain('enabled: true'); // From rawFrontmatter
+      expect(result).toContain('config:\n  nested: value'); // Nested structure preserved
+      expect(result).not.toContain('[object Object]'); // Should not use parsed version
+    });
+
+    test('should fall back to parsed frontmatter when rawFrontmatter is missing', () => {
+      const slides = [
+        {
+          index: 0,
+          frontmatter: {
+            layout: 'center',
+            enabled: false,
+            count: 42
+          },
+          content: '# Title'
+        }
+      ];
+
+      const result = reconstructMarkdown(slides);
+
+      expect(result).toContain('layout: center');
+      expect(result).toContain('enabled: false');
+      expect(result).toContain('count: 42');
+    });
+
+    test('should preserve complex YAML types in rawFrontmatter', () => {
+      const slides = [
+        {
+          index: 0,
+          rawFrontmatter: 'bool1: true\nbool2: false\nnumber: 3.14\nstring: "quoted value"\narray:\n  - item1\n  - item2',
+          frontmatter: {
+            // Parsed version loses type information
+            bool1: 'true',
+            bool2: 'false',
+            number: '3.14',
+            string: 'quoted value',
+            array: 'item1, item2'
+          },
+          content: '# Title'
+        }
+      ];
+
+      const result = reconstructMarkdown(slides);
+
+      // Should preserve original YAML types from rawFrontmatter
+      expect(result).toContain('bool1: true');
+      expect(result).toContain('bool2: false');
+      expect(result).toContain('number: 3.14');
+      expect(result).toContain('array:\n  - item1\n  - item2');
+    });
+  });
 });
