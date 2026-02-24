@@ -21,6 +21,7 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "health": "node -e '(async () => { const { HealthChecker } = require(\"./core/index.js\"); const checker = new HealthChecker(); const report = await checker.check(); console.log(JSON.stringify(report, null, 2)); })()'",
+    "verify:slide": "node scripts/verify-debug.js",
     "generate": "node cli.js generate",
     "analyze": "node cli.js analyze",
     "recommend": "node cli.js recommend",
