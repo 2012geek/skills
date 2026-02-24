@@ -86,8 +86,9 @@ function formatYamlValue(value) {
     // Check if it's a multi-line string
     if (value.includes('\n')) {
       // Use literal style scalar for multi-line strings
+      // Don't add extra indentation for CSS to preserve formatting
       const lines = value.split('\n');
-      return `|\n    ${lines.join('\n    ')}`;
+      return `|\n${lines.map(line => '  ' + line).join('\n')}`;
     }
 
     // Check if value needs quoting
