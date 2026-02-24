@@ -30,13 +30,20 @@ function transformSlides(slides) {
   // Generate smart CSS based on layout
   const css = generateSmartCSS({ layout });
 
-  // Inject CSS into the first slide's frontmatter style field
+  // Inject CSS into first slide's CONTENT as a <style> block
+  // This preserves YAML frontmatter and prevents type information loss
   if (css) {
-    const existingStyle = firstSlide.frontmatter?.style || '';
-    firstSlide.frontmatter.style = existingStyle ? `${existingStyle}\n${css}` : css;
+    const styleBlock = `<style>\n${css}\n</style>`;
 
-    // Remove rawFrontmatter to force reconstruction with modified frontmatter
-    delete firstSlide.rawFrontmatter;
+    if (firstSlide.content) {
+      // Prepend style block to existing content
+      firstSlide.content = `${styleBlock}\n\n${firstSlide.content}`;
+    } else {
+      // Content is empty, just add style block
+      firstSlide.content = styleBlock;
+    }
+
+    // DON'T delete rawFrontmatter - preserve original YAML structure!
   }
 
   return transformedSlides;

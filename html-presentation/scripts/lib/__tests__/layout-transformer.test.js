@@ -42,7 +42,7 @@ describe('Layout Transformer', () => {
   });
 
   describe('CSS injection', () => {
-    test('should inject CSS into first slide content', () => {
+    test('should inject CSS into first slide content as style block', () => {
       const slides = [
         {
           index: 0,
@@ -64,6 +64,7 @@ describe('Layout Transformer', () => {
       expect(result[0].content).toContain('<style>');
       expect(result[0].content).toContain(mockCSS);
       expect(result[0].content).toContain('</style>');
+      expect(result[0].content).toContain('# Title');
     });
 
     test('should not inject CSS into subsequent slides', () => {
@@ -88,7 +89,7 @@ describe('Layout Transformer', () => {
       expect(result[1].content).not.toContain('<style>');
     });
 
-    test('should inject CSS at the beginning of first slide', () => {
+    test('should inject CSS as style block at beginning of content', () => {
       const slides = [
         {
           index: 0,
@@ -102,12 +103,12 @@ describe('Layout Transformer', () => {
 
       const result = transformSlides(slides);
 
-      expect(result[0].content).toMatch(/^<style>[\s\S]*<\/style>\n\n# Title/);
+      expect(result[0].content).toMatch(/^<style>\n\/\* Generated CSS \*\/\n<\/style>\n\n# Title\n\nSubtitle$/);
     });
   });
 
   describe('Frontmatter preservation', () => {
-    test('should preserve existing frontmatter', () => {
+    test('should preserve existing frontmatter without modification', () => {
       const slides = [
         {
           index: 0,
@@ -123,13 +124,12 @@ describe('Layout Transformer', () => {
 
       const result = transformSlides(slides);
 
-      expect(result[0].frontmatter).toEqual({
-        layout: 'center',
-        transition: 'slide-left'
-      });
+      expect(result[0].frontmatter).toHaveProperty('layout', 'center');
+      expect(result[0].frontmatter).toHaveProperty('transition', 'slide-left');
+      expect(result[0].frontmatter).not.toHaveProperty('style');
     });
 
-    test('should preserve empty frontmatter', () => {
+    test('should not modify frontmatter when injecting CSS', () => {
       const slides = [
         {
           index: 0,
@@ -142,7 +142,26 @@ describe('Layout Transformer', () => {
 
       const result = transformSlides(slides);
 
-      expect(result[0].frontmatter).toEqual({});
+      expect(result[0].frontmatter).not.toHaveProperty('style');
+    });
+
+    test('should preserve rawFrontmatter when injecting CSS', () => {
+      const slides = [
+        {
+          index: 0,
+          frontmatter: {
+            layout: 'center'
+          },
+          content: '# Title',
+          rawFrontmatter: '---\nlayout: center\n---'
+        }
+      ];
+
+      generateSmartCSS.mockReturnValue('/* CSS */');
+
+      const result = transformSlides(slides);
+
+      expect(result[0]).toHaveProperty('rawFrontmatter', '---\nlayout: center\n---');
     });
   });
 
@@ -322,6 +341,8 @@ describe('Layout Transformer', () => {
 
       expect(result).toHaveLength(1);
       expect(result[0].content).toContain('<style>');
+      expect(result[0].content).toContain('/* CSS */');
+      expect(result[0].content).toContain('</style>');
     });
 
     test('should handle slides with complex frontmatter', () => {
@@ -346,6 +367,9 @@ describe('Layout Transformer', () => {
       expect(result[0].frontmatter).toHaveProperty('transition', 'slide-left');
       expect(result[0].frontmatter).toHaveProperty('theme', 'seriph');
       expect(result[0].frontmatter).toHaveProperty('background', 'https://example.com/bg.png');
+      expect(result[0].frontmatter).not.toHaveProperty('style');
+      expect(result[0].content).toContain('<style>');
+      expect(result[0].content).toContain('/* CSS */');
     });
 
     test('should handle slide with no content', () => {
@@ -358,6 +382,7 @@ describe('Layout Transformer', () => {
       const result = transformSlides(slides);
 
       expect(result[0].content).toContain('<style>');
+      expect(result[0].content).toContain('/* CSS */');
       expect(result[0].content).toContain('</style>');
     });
 
@@ -371,6 +396,9 @@ describe('Layout Transformer', () => {
       const result = transformSlides(slides);
 
       expect(result[0].content).toContain('<style>');
+      expect(result[0].content).toContain('/* CSS */');
+      expect(result[0].content).toContain('</style>');
+      expect(result[0].content).toContain('   \n\n  ');
     });
   });
 

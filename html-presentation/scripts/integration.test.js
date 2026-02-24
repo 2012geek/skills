@@ -152,8 +152,8 @@ Regular content here
     // Content should be different (CSS injected)
     expect(afterContent).not.toBe(beforeContent);
 
-    // Should contain CSS
-    expect(afterContent).toContain('<style>');
+    // Should contain CSS as <style> block in content (not in frontmatter)
+    expect(afterContent).toMatch(/<style>/);
     expect(afterContent).toContain('.slidev-layout');
 
     // Should have backup file
@@ -185,8 +185,8 @@ Regular content here
 
     const content = await fs.readFile(testFilePath, 'utf8');
 
-    // CSS should be in the content (after frontmatter)
-    expect(content).toContain('<style>');
+    // CSS should be injected as <style> block in content (not in frontmatter)
+    expect(content).toMatch(/<style>/);
 
     // Should contain key CSS rules
     expect(content).toContain('--slide-max-width');
