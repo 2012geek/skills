@@ -37,6 +37,7 @@
   "author": "Claude Code",
   "license": "MIT",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.78.0",
     "chokidar": "^3.6.0",
     "commander": "^11.1.0",
     "js-yaml": "^4.1.0",
