@@ -1,0 +1,680 @@
+---
+theme: seriph
+highlighter: shiki
+lineNumbers: false
+drawings:
+  persist: false
+editor: false
+transition: none
+download: false
+info: false
+canCopy: true
+transitionSlide: false
+mouseWheel: true
+recording:
+  enabled: false
+  video: false
+  audio: false
+mdc: true
+layout: center
+class: text-center
+# 添加自定义CSS来防止内容越界
+style: |
+  /* 防止图片超出容器 */
+  img {
+    max-width: 90vw !important;
+    max-height: 70vh !important;
+    object-fit: contain !important;
+  }
+
+  /* 防止表格内容溢出 */
+  table {
+    max-width: 90vw !important;
+    overflow-wrap: break-word !important;
+    word-break: break-word !important;
+  }
+
+  table th, table td {
+    max-width: 25vw !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    padding: 8px !important;
+  }
+
+  /* 防止长链接溢出 */
+  a {
+    word-break: break-all !important;
+    overflow-wrap: break-word !important;
+  }
+
+  /* 防止代码块溢出 */
+  pre {
+    max-width: 90vw !important;
+    overflow-x: auto !important;
+    white-space: pre-wrap !important;
+    word-wrap: break-word !important;
+  }
+
+  code {
+    max-width: 90vw !important;
+    overflow-x: auto !important;
+  }
+
+  /* 防止内容区域溢出 */
+  .slide-content {
+    overflow-x: hidden !important;
+    max-width: 95vw !important;
+  }
+
+  /* 防止列表溢出 */
+  ul, ol {
+    max-width: 90vw !important;
+  }
+
+  li {
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+  }
+---
+
+# Claude Code 实战案例集
+
+> **从编程语言到自然语言** - Claude Code 在实际项目中的应用记录
+
+**文档信息**
+- **版本**：v2.0
+- **创建日期**：2026-01-27
+- **最后更新**：2026-01-29
+- **作者**：陈乐宁
+---
+
+## 📑 快速导航
+
+### 实战案例概览
+
+| 案例 | 业务场景 | 核心工具 | Skill 路径 |
+|------|----------|----------|-----------|
+| [🔍 案例1：代码检视](#案例1代码检视-skill) | 自动审查 PR 代码质量 | code-review agent + Hooks | [查看 ->](https://github.com/2012geek/mylerobot-doc/tree/main/skills/gitcode-code-review) |
+| [🚀 案例2：自动提 PR](#案例2自动提-pr-skill) | 自动生成 PR 描述和测试用例 | Templates + Agents | [查看 ->](https://github.com/2012geek/mylerobot-doc/tree/main/skills/gitcode-pr) |
+| [🔧 案例3：门禁自动修复](#案例3门禁问题自动修复-skill) | CI/CD 门禁失败自动修复 | Page Analysis + Retry | [查看 ->](https://github.com/2012geek/mylerobot-doc/tree/main/skills/gitcode-ci-repair) |
+| [✅ 案例4：UT 自动添加](#案例4ut-自动添加) | 自动生成单元测试 | API Analysis + Mock Generation | 原生能力 |
+| [🏗️ 案例5：AI 功能开发](#案例5ai-代码功能开发) | 重构视频转换代码 | Refactoring + Debugging | 原生能力 |
+---
+
+## 📚 理论基础（快速版）
+
+### Claude Code 是什么？
+
+Claude Code = 代理式 AI 编程工具，不仅仅是代码助手，而是能够：
+- 📝 直接编辑文件（不是建议代码）
+- 🧠 理解整个代码库
+- ⚡ 执行命令（测试、构建、Git 操作）
+- 🎯 自主规划（Plan Mode）
+
+### 两种形态对比
+
+| 特性 | CLI 版本 | VSCode 扩展 |
+|------|----------|-------------|
+| **更新速度** | 🚀 最快 | ⏱️ 稍慢 |
+| **功能完整性** | ✅ 100% | ✅ 95% |
+| **图片输入** | ❌ 不支持 | ✅ 支持 |
+| **适用人群** | 熟练开发者 | 新手/可视化偏好 |
+
+### Skills 系统核心
+
+```
+Skills = 可复用的能力模块
+
+| Commands (斜杠命令)  | /commit, /review-pr  |
+| Agents (子代理)      | code-reviewer, pptx-generator  |
+| Hooks (事件钩子)     | PreToolUse, SessionStart  |
+| Scripts (执行脚本)   | build.js, test.py  |
+```
+
+**核心价值**：模块化 + 可复用 + 可组合 + 可扩展
+---
+
+## 🎯 实战案例
+### 案例1：代码检视 Skill
+
+📦 对应 Skill：[gitcode-code-review](https://github.com/2012geek/mylerobot-doc/tree/main/skills/gitcode-code-review)
+
+#### 🎯 问题背景
+- **业务场景**：开发团队需要人工审查每个 PR，耗时耗力
+- **痛点**：
+  - 人工审查容易遗漏细节
+  - 审查标准不一致
+  - 重复性工作多
+
+#### 💡 解决方案
+集成官方 code-review agent，实现自动代码检视
+
+**技术架构**：
+```
+用户提交 PR
+    ↓
+触发 code-review agent
+    ↓
+分析代码变更
+    ↓
+生成审查意见
+    ↓
+自动评论到 PR
+```
+
+#### 📊 实测效果
+
+<v-click>
+**✅ 成功案例 - 发现语义问题**
+
+[PR #46 - 发现实际问题](https://gitcode.com/openeuler/lerobot_ros2/pull/46)
+
+<img src="/images/83a71edb-ba00-4b99-aed0-f05bcdd6cc78.png" style="max-height: 60vh; max-width: 90vw; object-fit: contain;"/>
+</v-click>
+
+<v-click>
+**❌ 误报案例 - shape 未定义**
+
+[PR #46 - 误报问题](https://gitcode.com/openeuler/lerobot_ros2/pull/46/diffs)
+
+**问题现象**：
+<img src="/images/df287dc9-87df-4d83-ad4f-39a9ef2e980e.png" style="max-height: 55vh; max-width: 90vw; object-fit: contain;"/>
+
+**根因定位**：
+Git 只获取了部分修改代码，导致上下文缺失
+<img src="/images/c3aa1161-246c-4443-b145-83ca041d92bf.png" style="max-height: 55vh; max-width: 90vw; object-fit: contain;"/>
+
+**解决方案**：
+添加误报机制
+<img src="/images/a4797cbe-b446-4644-abb4-195b193f290f.png" style="max-height: 55vh; max-width: 90vw; object-fit: contain;"/>
+</v-click>
+
+<v-click>
+**❌ 漏报案例 - classmethod 问题**
+
+[PR #51 - 未发现的问题](https://gitcode.com/openeuler/lerobot_ros2/pull/51)
+
+**问题代码**：
+```python
+class ACTPolicy(PreTrainedPolicy):
+    def __init__(self, config: ACTConfig):
+        super().__init__(config)
+
+    @classmethod
+    def is_next_pred_need_obs(cls) -> bool:
+        # ❌ 问题：使用 cls._action_queue 但实例方法中没有定义
+        return len(cls._action_queue) == 0 if hasattr(cls, "_action_queue") else True
+```
+
+<img src="/images/684b95f9-6926-400c-83aa-86f959a064d3.png" style="max-height: 55vh; max-width: 45vw; object-fit: contain;"/>
+
+**解决方案**：
+添加专门的 agent 检查类方法问题
+<img src="/images/edbfd903-2250-4521-850d-c1150e9a09ff.png" style="max-height: 55vh; max-width: 90vw; object-fit: contain;"/>
+</v-click>
+
+<v-click>
+#### 🏗️ 系统架构
+
+<img src="/images/57bb395a-f768-422d-a26b-abd1e83ab9fc.png" style="max-height: 60vh; max-width: 90vw; object-fit: contain;"/>
+</v-click>
+
+<v-click>
+#### ⚠️ 调试过程中的坑
+
+**坑1：规格描述导致隐形脚本**
+
+❌ **错误做法**：
+```
+"检查函数不超过50行"
+```
+
+结果生成了 50+ 行的 AST 检测脚本：
+```python
+import ast
+
+def check_function_length(file_path, max_lines=50):
+    # ... 50+ 行代码
+```
+
+✅ **正确做法**：
+```
+"使用 LLM 进行语义分析，识别潜在的代码问题"
+```
+
+#### ✅ 最佳实践
+
+> 💡 **核心建议**
+> - 使用 **LLM 语义分析**，避免规格性描述（如"函数不超过50行"）
+> - 让 Claude 先给出方案（调研模式），避免从零开始写 Skill
+> - 集成官方 agents，再添加自定义模式
+
+> ⚠️ **常见误区**
+> - 不要使用"检查函数不超过50行"这种规格性描述
+> - 样例代码要明确标注"这是样例"，否则会被当成答案
+</v-click>
+---
+### 案例2：自动提 PR Skill
+
+📦 对应 Skill：[gitcode-pr](https://github.com/2012geek/mylerobot-doc/tree/main/skills/gitcode-pr)
+
+#### 🎯 问题背景
+- **业务场景**：开发者提交代码后需要手动写 PR 描述和测试用例
+- **痛点**：
+  - PR 描述格式不统一
+  - 测试用例编写繁琐
+  - 重复性工作多
+
+#### 💡 解决方案
+使用 LLM 自动总结修改内容，按照固定模板生成 PR 描述和测试用例
+
+#### 📊 实测效果
+
+**成功案例**：
+[PR #50 - 自动生成](https://gitcode.com/openeuler/lerobot_ros2/pull/50)
+
+<v-click>
+<img src="/images/50b68745-5523-4eec-8469-365d0c084046.png" style="max-height: 60vh; max-width: 90vw; object-fit: contain;"/>
+</v-click>
+
+<v-click>
+<img src="/images/dc0e88d0-565e-42ec-a424-194ac19a711f.png" style="max-height: 60vh; max-width: 90vw; object-fit: contain;"/>
+<img src="/images/cc57bc87-7caa-4d6e-bce8-c6441e8c6cde.png" style="max-height: 60vh; max-width: 90vw; object-fit: contain;"/>
+
+**特点**：
+- 自动分析代码变更
+- 生成结构化的 PR 描述
+- 自动创建测试用例模板
+</v-click>
+
+<v-click>
+#### 🏗️ 系统架构
+
+<img src="/images/b001a433-df0e-4a8c-9ce7-380078ab86b7.png" style="max-height: 60vh; max-width: 90vw; object-fit: contain;"/>
+</v-click>
+
+<v-click>
+#### ⚠️ 调试过程中的坑
+
+**坑1：样例当成答案**
+
+调试测试用例时，没有明确告诉 Claude 不要调整 PR 描述，结果把 PR 描述改坏了
+
+```markdown
+❌ 错误指令：
+"参考以下样例生成测试用例：[样例内容]"
+
+✅ 正确指令：
+"参考以下样例生成测试用例模板（不要修改PR描述）：[样例内容]"
+```
+
+#### ✅ 最佳实践
+
+> 💡 **核心建议**
+> - 模板要足够详细，否则每次生成结果不一致
+> - 明确标注样例，避免被当成答案
+
+> ⚠️ **常见误区**
+> - 给样例时必须明确"这是样例，参考格式"
+> - 调试一部分时，要锁定其他部分
+</v-click>
+---
+### 案例3：门禁问题自动修复 Skill
+
+📦 对应 Skill：[gitcode-ci-repair](https://github.com/2012geek/mylerobot-doc/tree/main/skills/gitcode-ci-repair)
+
+#### 🎯 问题背景
+- **业务场景**：CI/CD 门禁失败后需要手动修复代码
+- **痛点**：
+  - 手动修复耗时长
+  - 需要反复提交验证
+  - 影响开发效率
+
+#### 💡 解决方案
+自动修复代码 -> 提交 -> 发送 `/retest` -> 检查结果 -> 失败则重试
+
+#### 📊 实测效果
+
+**成功案例**：
+[PR #50 - 门禁自动修复](https://gitcode.com/openeuler/lerobot_ros2/pull/50)
+
+<img src="/images/07713f19-0dba-4270-b2c9-9ef614f0dc6b.png" style="max-height: 400px; max-width: 90vw; object-fit: contain;"/>
+
+**流程**：
+1. 自动修改代码
+2. 自动提交
+3. 自动发送 `/retest`
+4. 检查门禁结果
+5. 失败则继续重试
+
+#### ⚠️ 调试过程中的坑
+
+**坑1：API 获取不到 PR 状态**
+
+Claude 尝试调用 API 获取门禁状态，但发现 API 不可用
+
+✅ **解决方案**：提示使用页面分析
+```markdown
+"API 获取不到 PR 状态时，尝试使用页面分析"
+```
+
+Claude 自动使用 Python 包进行页面分析和元素抓取
+
+#### ✅ 最佳实践
+
+> 💡 **替代方案**
+> - API 失败时，多问一句"是否还有其他方式？"
+> - 页面分析可以作为 API 的有效补充
+---
+### [案例4：UT 自动添加](https://gitcode.com/openeuler/lerobot_ros2/pull/50)
+
+📦 对应 Skill：通用功能，使用 Claude Code 原生能力
+
+#### 🎯 问题背景
+- **业务场景**：开发新功能后需要编写单元测试
+- **痛点**：
+  - 测试用例编写繁琐
+  - 需要构造各种测试数据
+  - Mock 复杂依赖
+
+#### 💡 解决方案
+自动分析 API，自动设计测试用例和 Mock 数据
+
+#### 📊 实测效果
+
+**成功案例**：
+[Commit: c30540aa](https://gitcode.com/leningchen_admin/lerobot_ros2/commit/c30540aa24e8d2e0f088646b52d777f630c40b5d)
+
+<img src="/images/f0017b3c-7fb6-4051-a565-6a78c68f406d.png" style="max-height: 400px; max-width: 90vw; object-fit: contain;"/>
+
+**功能**：视频转换成图片测试
+
+#### ⚠️ 调试过程中的坑
+
+**坑1：Mock 导致测试不完整**
+
+第一版直接 Mock 了底层视频接口，因为没有视频文件
+
+✅ **解决方案**：
+```markdown
+"先自动生成一段测试视频，然后基于真实视频编写测试"
+```
+
+Claude 自动：
+1. 生成测试视频
+2. 重构测试用例
+3. 使用真实数据进行测试
+
+#### ✅ 最佳实践
+
+> 💡 **最佳实践**
+> - 使用 `feature-architect` skill 进行功能开发，避免直接开干
+> - 优先使用真实数据，避免过度 Mock
+---
+### [案例5：AI 代码功能开发](https://gitcode.com/openeuler/lerobot_ros2/pull/50)
+
+📦 对应 Skill：通用功能，使用 Claude Code 原生能力
+
+#### 🎯 问题背景
+- **业务场景**：重构视频转换代码
+- **需求**：
+  - 优化 GPU/CPU 切换逻辑
+  - 统一代码架构
+  - 注释英文化
+
+#### 💡 解决方案
+使用 Claude 进行完整的功能重构
+
+#### 📊 实测效果
+
+**重构内容**：
+1. **GPU/CPU 切换优化**
+   - 优化前：CPU 版本和 GPU 版本分别修改代码
+   - 优化后：自动回退到 CPU，可靠性增强
+
+2. **注释英文化**
+   - 统一代码注释风格
+
+3. **架构优化**
+   - 优化前：使用目录中 `images` 变量隐藏判断
+   - 优化后：增加 `backend=image` 参数，符合框架规范
+
+#### ⚠️ 调试过程中的坑
+
+**坑1：重构后测试用例失败**
+
+重构完成后测试用例无法通过，出现死循环
+
+Claude 一直尝试但自己定位不出来
+
+✅ **解决方案**：
+```markdown
+"重构前用例都是好的，重构后用例都是坏的，仔细分析每一行代码，必要时添加 debug 信息"
+```
+
+添加 debug 信息后，成功定位并解决问题
+
+#### ✅ 最佳实践
+
+> 💡 **迭代策略**
+> - 一次走一小步，不要一次性干很多事情
+> - 重构前后都要运行测试用例
+> - 出问题时添加 debug 信息逐步定位
+---
+
+## 🎓 实战总结
+
+### 工具对比
+
+| 维度 | CLI 版本 | VSCode 扩展 |
+|------|----------|-------------|
+| **速度** | 🚀 更快 | 🐢 较慢 |
+| **图片支持** | ❌ | ✅ |
+| **推荐场景** | 熟练开发者 | 新手/可视化需求 |
+
+### 调试技巧汇总
+
+#### 🎯 通用调试方法
+
+```bash
+# 1. 打印调试信息
+"把每一步的调试信息打印出来"
+
+# 2. 逐步定位
+"一步一步定位问题，从简单到复杂"
+
+# 3. 对比分析
+"重构前用例好的，重构后用例坏的，对比每一行代码"
+```
+
+#### ⚠️ 常见陷阱
+
+| 陷阱 | 症状 | 解决方案 |
+|------|------|----------|
+| **API 失败** | 说 API 不可用 | 多问一句"是否有其他方式？" |
+| **钻牛角尖** | 反复尝试不成功 | 人工介入，给出明确提示 |
+| **偷懒** | 简化实现 | 主动引导，明确要求 |
+| **规格描述** | 生成检测脚本 | 改用 LLM 语义分析 |
+
+#### 💡 核心原则
+
+> **最重要的事**
+>
+> 💡 **不要仅依靠自己的现有知识**，多给 Claude 讲清楚需求，让 Claude 来负责设计方案。
+>
+> **原因**：Claude 拥有更全面的知识库和更强的分析能力，过度限制反而会降低效果
+>
+> **示例**：
+> - ❌ 错误："写一个函数来检测代码质量"
+> - ✅ 正确："这个项目需要自动审查 PR 代码质量，我发现的问题有 X、Y、Z，请设计一个完整的解决方案"
+---
+
+#### ⚠️ 幻觉问题
+
+**问题描述**：
+LLM 可能会产生"幻觉"，即生成不存在的内容或报告不存在的代码问题。
+
+**实际案例**：
+- [案例1：代码检视](#案例1代码检视-skill)中误报 `shape` 变量未定义
+- 漏报 `classmethod` 中的潜在问题
+- 报出代码中不存在的变量名或函数调用
+
+**缓解方案**：
+1. **多轮验证机制**：重复执行相同的检视任务，对比结果
+2. **交叉验证**：使用不同的 prompt 或 agent 进行交叉检查
+3. **置信度评分**：要求 Claude 对每个问题给出置信度评分
+4. **添加检测规格**：在 skill 中定义严格的检测规则，减少误报
+5. **人工审核**：对于高风险问题，保持人工审核环节
+
+> 💡 **最佳实践**
+> - 在代码检视 skill 中使用多 agent 并行审查机制
+> - 对于低置信度的问题，标记为"待确认"而非直接报告
+---
+
+#### ⚠️ 上下文约束
+
+**问题描述**：
+LLM 模型有最大上下文长度限制（如 Claude 200K tokens），超出限制会导致 API 报错。
+
+**实际案例**：
+```
+API Error: 400 {"type":"error","error":{"message":"Invalid API parameter, please check the documentation. Request 186773 input tokens exceeds the model's maximum context length 202750","code":"1210"},"request_id":"202601281529202c77e5b03eed4ee9"}
+```
+
+**解决方案**：
+1. **分批次处理**：将大项目拆分为多个小模块分别分析
+2. **使用摘要/压缩**：先对代码库生成摘要，再基于摘要进行分析
+3. **优先级排序**：优先分析核心模块，再逐步扩展
+4. **利用长上下文模型**：使用支持 200K tokens 的 Claude 模型
+5. **增量分析**：仅分析变更的部分，而非整个代码库
+
+> 💡 **最佳实践**
+> - 在 skill 中实现智能分块逻辑
+> - 使用 Git diff 仅分析变更的文件
+> - 对于大型项目，建议先生成架构文档再分析
+---
+
+#### ⚠️ 安全风险
+
+**问题描述**：
+Claude 执行破坏性命令（如 `git push -f`）时可能造成不可逆的损失。
+
+**实际案例**：
+- 调试过程中使用 `git push -f`，删除了分支的所有代码和历史记录
+- 幸运的是通过 Claude 的帮助找回了代码
+
+**根本原因**：
+- 缺少对危险命令的验证机制
+- 没有 Human-in-the-Loop 检查点
+
+**防护措施**：
+1. **PreToolUse Hooks**：在执行危险命令前进行验证
+   ```yaml
+   # .claude/hooks/pre-dangerous-command.md
+   检测到危险命令：{{tool_name}}
+   请确认：
+   - 是否真的需要执行此命令？
+   - 是否已备份重要数据？
+   ```
+2. **沙盒环境**：在隔离环境中测试，确认无误后再执行
+3. **备份策略**：执行前自动创建备份
+4. **命令白名单**：明确允许执行的操作
+
+> 💡 **最佳实践**
+> - 在 CLAUDE.md 中配置自动化的安全检查
+> - 对于 `rm -rf`、`git push -f` 等命令，必须经过人工确认
+> - 使用 Git Worktree 进行实验性操作，避免影响主分支
+---
+
+### 设计理念
+
+#### 核心原则
+
+1. **Human-in-the-Loop** 🤝
+   - 安全优先，特别是 `rm` 等破坏性命令
+   - 保持人工审核
+
+2. **自然语言交互** 💬
+   - 从编程语言到自然语言的演进
+   - 降低编程门槛
+
+3. **渐进式增强** 📈
+   - 当前仍需编程基础
+   - 需要引导模型定位问题
+
+### 最佳实践清单
+
+#### ✅ 开发建议
+
+- [x] **明确指令**：使用命令式沟通（`git submit`）
+- [x] **小步快跑**：一次处理一个任务
+- [x] **常用命令**：`git`/`rm` 等准确且高效
+- [x] **Worktree**：多任务并行时避免干扰
+- [x] **Plan Mode**：探索代码库再设计方案
+
+#### ❌ 避免的陷阱
+
+- [ ] 不要使用规格性描述（如"函数不超过50行"）
+- [ ] 不要一次性干很多事
+- [ ] 不要让 Claude 钻牛角尖
+- [ ] 不要忘记标注样例
+---
+
+## 📖 参考资源
+
+### 官方文档
+
+- **[Claude Code 官方文档](https://code.claude.com/docs/en/overview)** - 完整文档
+- **[VS Code 扩展文档](https://code.claude.com/docs/en/vs-code)** - 集成指南
+- **[Claude Code 最佳实践](https://www.anthropic.com/engineering/claude-code-best-practices)** - 官方建议
+
+### Skills 相关
+
+- **[anthropics/skills GitHub](https://github.com/anthropics/skills)** - 官方示例
+- **[Agent Skills 工程博客](https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills)** - 设计理念
+- **[Claude Agent SDK](https://www.anthropic.com/engineering/building-agents-with-the-claude-agent-sdk)** - 构建自定义代理
+
+### 深度解析
+
+- **[Claude Agent Skills 深度剖析](https://leehanchung.github.io/blogs/2025/10/26/claude-skills-deep-dive/)** - 第一性原理分析
+- **[Claude Code 技术参考手册](https://blakecrosley.com/guide/claude-code)** - 完整技术参考
+- **[Claude Code 定制指南](https://alexop.dev/posts/claude-code-customization-guide-claudemd-skills-subagents/)** - 配置详解
+
+### 实用资源
+
+- **[Claude Code 提示词库（2026）](https://www.aipromptlibrary.app/blog/claude-code-prompt-library)** - 40+ 提示模板
+- **[CLI 速查表](https://shipyard.build/blog/claude-code-cheat-sheet/)** - 命令快速参考
+---
+
+## 🎯 快速开始
+
+### 选择合适的版本
+
+```bash
+# 新手或偏好可视化
+-> 使用 VSCode 扩展
+
+# 熟练开发者或需要完整功能
+-> 使用 CLI 版本
+
+# 需要图片输入
+-> 必须使用 VSCode 扩展
+
+# 自动化脚本
+-> 使用 CLI 版本
+```
+
+### Skills 开发建议
+
+1. **从小处着手**：先实现简单功能
+2. **充分测试**：在不同场景验证
+3. **明确边界**：清晰定义职责范围
+4. **复用优先**：查看官方仓库避免重复
+5. **渐进式开发**：使用 Plan Mode 探索代码库
+---
+
+**反馈渠道**：如有问题或建议，欢迎提 Issue 或 PR
+
+**版本历史**：
+- v2.0 (2026-01-29): 案例驱动重构，突出实战经验
+- v1.0 (2026-01-27): 初始版本

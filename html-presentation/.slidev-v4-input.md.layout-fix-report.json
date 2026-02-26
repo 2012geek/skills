@@ -1,0 +1,148 @@
+{
+  "summary": {
+    "totalSlides": 19,
+    "slidesProcessed": 19,
+    "cssInjected": true,
+    "changesDetected": 19
+  },
+  "changes": [
+    {
+      "slide": 1,
+      "type": "title",
+      "layout": "center",
+      "reason": "H1 only, minimal content",
+      "cssInjected": true
+    },
+    {
+      "slide": 2,
+      "type": "simple",
+      "layout": "default",
+      "reason": "Default layout",
+      "cssInjected": false
+    },
+    {
+      "slide": 3,
+      "type": "simple",
+      "layout": "default",
+      "reason": "Default layout",
+      "cssInjected": false
+    },
+    {
+      "slide": 4,
+      "type": "simple",
+      "layout": "default",
+      "reason": "Default layout",
+      "cssInjected": false
+    },
+    {
+      "slide": 5,
+      "type": "simple",
+      "layout": "default",
+      "reason": "Default layout",
+      "cssInjected": false
+    },
+    {
+      "slide": 6,
+      "type": "image",
+      "layout": "default",
+      "reason": "3 images, content-light",
+      "cssInjected": false
+    },
+    {
+      "slide": 7,
+      "type": "code",
+      "layout": "default",
+      "reason": "4 code blocks",
+      "cssInjected": false
+    },
+    {
+      "slide": 8,
+      "type": "simple",
+      "layout": "default",
+      "reason": "Default layout",
+      "cssInjected": false
+    },
+    {
+      "slide": 9,
+      "type": "simple",
+      "layout": "default",
+      "reason": "Default layout",
+      "cssInjected": false
+    },
+    {
+      "slide": 10,
+      "type": "simple",
+      "layout": "default",
+      "reason": "Default layout",
+      "cssInjected": false
+    },
+    {
+      "slide": 11,
+      "type": "simple",
+      "layout": "default",
+      "reason": "Default layout",
+      "cssInjected": false
+    },
+    {
+      "slide": 12,
+      "type": "simple",
+      "layout": "default",
+      "reason": "Default layout",
+      "cssInjected": false
+    },
+    {
+      "slide": 13,
+      "type": "simple",
+      "layout": "default",
+      "reason": "Default layout",
+      "cssInjected": false
+    },
+    {
+      "slide": 14,
+      "type": "simple",
+      "layout": "default",
+      "reason": "Default layout",
+      "cssInjected": false
+    },
+    {
+      "slide": 15,
+      "type": "simple",
+      "layout": "default",
+      "reason": "Default layout",
+      "cssInjected": false
+    },
+    {
+      "slide": 16,
+      "type": "simple",
+      "layout": "default",
+      "reason": "Default layout",
+      "cssInjected": false
+    },
+    {
+      "slide": 17,
+      "type": "simple",
+      "layout": "default",
+      "reason": "Default layout",
+      "cssInjected": false
+    },
+    {
+      "slide": 18,
+      "type": "simple",
+      "layout": "default",
+      "reason": "Default layout",
+      "cssInjected": false
+    },
+    {
+      "slide": 19,
+      "type": "simple",
+      "layout": "default",
+      "reason": "Default layout",
+      "cssInjected": false
+    }
+  ],
+  "timestamp": "2026-02-24T03:45:48.761Z",
+  "totalSlides": 19,
+  "slidesProcessed": 19,
+  "cssInjected": true,
+  "changesDetected": 19
+}

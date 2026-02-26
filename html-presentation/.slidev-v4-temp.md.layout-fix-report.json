@@ -1,0 +1,127 @@
+{
+  "summary": {
+    "totalSlides": 16,
+    "slidesProcessed": 16,
+    "cssInjected": true,
+    "changesDetected": 16
+  },
+  "changes": [
+    {
+      "slide": 1,
+      "type": "simple",
+      "layout": "default",
+      "reason": "Default layout",
+      "cssInjected": true
+    },
+    {
+      "slide": 2,
+      "type": "two-col",
+      "layout": "default",
+      "reason": "Grid/card layout detected",
+      "cssInjected": false
+    },
+    {
+      "slide": 3,
+      "type": "two-col",
+      "layout": "default",
+      "reason": "Grid/card layout detected",
+      "cssInjected": false
+    },
+    {
+      "slide": 4,
+      "type": "code",
+      "layout": "default",
+      "reason": "5 code blocks",
+      "cssInjected": false
+    },
+    {
+      "slide": 5,
+      "type": "simple",
+      "layout": "default",
+      "reason": "Default layout",
+      "cssInjected": false
+    },
+    {
+      "slide": 6,
+      "type": "simple",
+      "layout": "default",
+      "reason": "Default layout",
+      "cssInjected": false
+    },
+    {
+      "slide": 7,
+      "type": "simple",
+      "layout": "default",
+      "reason": "Default layout",
+      "cssInjected": false
+    },
+    {
+      "slide": 8,
+      "type": "simple",
+      "layout": "default",
+      "reason": "Default layout",
+      "cssInjected": false
+    },
+    {
+      "slide": 9,
+      "type": "simple",
+      "layout": "default",
+      "reason": "Default layout",
+      "cssInjected": false
+    },
+    {
+      "slide": 10,
+      "type": "simple",
+      "layout": "default",
+      "reason": "Default layout",
+      "cssInjected": false
+    },
+    {
+      "slide": 11,
+      "type": "simple",
+      "layout": "default",
+      "reason": "Default layout",
+      "cssInjected": false
+    },
+    {
+      "slide": 12,
+      "type": "simple",
+      "layout": "default",
+      "reason": "Default layout",
+      "cssInjected": false
+    },
+    {
+      "slide": 13,
+      "type": "simple",
+      "layout": "default",
+      "reason": "Default layout",
+      "cssInjected": false
+    },
+    {
+      "slide": 14,
+      "type": "simple",
+      "layout": "default",
+      "reason": "Default layout",
+      "cssInjected": false
+    },
+    {
+      "slide": 15,
+      "type": "simple",
+      "layout": "default",
+      "reason": "Default layout",
+      "cssInjected": false
+    },
+    {
+      "slide": 16,
+      "type": "simple",
+      "layout": "default",
+      "reason": "Default layout",
+      "cssInjected": false
+    }
+  ],
+  "timestamp": "2026-02-24T04:02:34.840Z",
+  "totalSlides": 16,
+  "slidesProcessed": 16,
+  "cssInjected": true,
+  "changesDetected": 16
+}

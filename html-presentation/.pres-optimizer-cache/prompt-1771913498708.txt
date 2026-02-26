@@ -1,0 +1,50 @@
+You are a presentation layout expert. Analyze this slide and recommend the best optimization.
+
+Slide Information:
+- Title: 
+- Type: code-heavy
+- Visual Density: low
+- List Items: 5
+- Code Blocks: 5
+- Headings: 10
+- Content Length: 2558 characters
+- Lines: 119
+- Average List Item Length: 3 characters
+
+Available Optimizations:
+1. "keep-as-is" - No changes needed (good for short, simple slides under 1000 chars)
+2. "two-column" - Split content into two columns (good for lists with 8-15 items)
+3. "two-column-compact" - Two columns with smaller font (good for 15-25 items)
+4. "shrink-font" - Reduce font size to 0.85em (good for content-heavy slides)
+5. "add-scroll" - Enable scrolling for very long content (keeps one slide)
+6. "split-slide" - Split into 2-3 slides (best for very long content > 2500 chars or > 30 items)
+7. "main-sections-only" - Show only main sections, hide details (for complex TOCs with many subsections)
+
+Decision Criteria:
+- Very high density (>1.5x): prefer "split-slide" or "add-scroll"
+- High density (1.0-1.5x): consider "two-column-compact" or "shrink-font"
+- List items > 25: use "split-slide" or "two-column-compact"
+- List items > 40: MUST use "split-slide"
+- Code blocks > 2: use "keep-as-is" or "shrink-font" (don't break code)
+- Content > 2500 chars: consider "split-slide"
+- Content > 4000 chars: MUST use "split-slide" or "add-scroll"
+- TOC with subsections: prefer "two-column-compact" or "main-sections-only"
+- Priority: Readability > Single Slide. Multiple short slides better than one crowded slide.
+
+For Chinese content:
+- Chinese characters are visually larger, account for this
+- Maintain good line spacing for readability
+- 1.15-1.2 line-height is comfortable for Chinese text
+
+Return your decision as JSON:
+{
+  "optimization": "two-column-compact",
+  "reasoning": "Brief explanation of why this strategy is best for this specific slide",
+  "config": {
+    "fontSize": "0.9em",
+    "lineHeight": "1.2",
+    "layout": "two-cols",
+    "maxItemsPerColumn": 12
+  },
+  "splits": []
+}

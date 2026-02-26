@@ -1,0 +1,36 @@
+{
+  "summary": {
+    "totalSlides": 3,
+    "slidesProcessed": 3,
+    "cssInjected": true,
+    "changesDetected": 3
+  },
+  "changes": [
+    {
+      "slide": 1,
+      "type": "title",
+      "layout": "center",
+      "reason": "H1 only, minimal content",
+      "cssInjected": true
+    },
+    {
+      "slide": 2,
+      "type": "simple",
+      "layout": "default",
+      "reason": "Default layout",
+      "cssInjected": false
+    },
+    {
+      "slide": 3,
+      "type": "simple",
+      "layout": "default",
+      "reason": "Default layout",
+      "cssInjected": false
+    }
+  ],
+  "timestamp": "2026-02-24T03:47:25.017Z",
+  "totalSlides": 3,
+  "slidesProcessed": 3,
+  "cssInjected": true,
+  "changesDetected": 3
+}
