@@ -46,26 +46,60 @@ class ContentAnalyzer {
     const sections = [];
     let currentSection = null;
     let sectionId = 1;
+    let contentTokens = [];
 
     tokens.forEach(token => {
       if (token.type === 'heading' && token.depth === 1) {
         if (currentSection) {
+          // Save any remaining content to current section
+          if (contentTokens.length > 0) {
+            currentSection.content.push(...contentTokens);
+            contentTokens = [];
+          }
           sections.push(currentSection);
         }
         currentSection = {
           id: sectionId++,
           title: token.text,
-          contents: []
+          contents: [],
+          content: []
         };
       } else if (currentSection && token.type === 'heading' && token.depth === 2) {
+        // Save any accumulated content before this H2 to the section level
+        // or to the previous subsection if one exists
+        if (contentTokens.length > 0) {
+          // If there's a previous subsection, add content to it
+          if (currentSection.contents.length > 0) {
+            const prevSubsection = currentSection.contents[currentSection.contents.length - 1];
+            prevSubsection.content.push(...contentTokens);
+          } else {
+            // Otherwise, add to section level
+            currentSection.content.push(...contentTokens);
+          }
+          contentTokens = [];
+        }
+        // Create new subsection
         currentSection.contents.push({
           type: 'subsection',
-          title: token.text
+          title: token.text,
+          content: []
         });
+      } else if (currentSection) {
+        // Capture all non-heading tokens as content
+        contentTokens.push(token);
       }
     });
 
     if (currentSection) {
+      // Save any remaining content to the last subsection or section
+      if (contentTokens.length > 0) {
+        if (currentSection.contents.length > 0) {
+          const lastSubsection = currentSection.contents[currentSection.contents.length - 1];
+          lastSubsection.content.push(...contentTokens);
+        } else {
+          currentSection.content.push(...contentTokens);
+        }
+      }
       sections.push(currentSection);
     }
 
