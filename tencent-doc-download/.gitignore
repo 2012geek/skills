@@ -14,6 +14,9 @@ output/
 # Metadata (user-specific)
 .sync-metadata.json
 
+# Browser session data (包含登录信息，不应提交)
+.tencent-docs-session/
+
 # OS files
 .DS_Store
 Thumbs.db
@@ -23,3 +26,8 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Temporary scripts (调试用)
+screenshot-*.js
+screenshot-*.cjs
+screenshot-*.mjs

@@ -23,11 +23,39 @@ license: MIT
 ### 1. 安装依赖
 
 ```bash
-cd skills/tencent-doc-sync
+cd skills/tencent-doc-download
 npm install
 ```
 
-### 2. 运行同步
+### 2. 获取登录二维码（首次使用）
+
+**重要：** 如果会话已过期，需要先获取登录二维码。
+
+```bash
+# 仅截图保存
+node scripts/get-qr-code.js
+
+# 截图并发送到邮箱（需配置邮箱密码）
+node scripts/get-qr-code.js --email
+
+# 指定输出路径
+node scripts/get-qr-code.js --output=/path/to/qr.png
+```
+
+**自动完成步骤：**
+1. ✅ 打开腾讯文档首页
+2. ✅ 点击右上角"登录"按钮
+3. ✅ 同意用户协议
+4. ✅ 点击微信登录图标
+5. ✅ 点击 "Log in now" 按钮
+6. ✅ **点击 "Agree" 按钮（关键步骤！）**
+7. ✅ 等待二维码出现
+8. ✅ 检测并验证二维码
+9. ✅ 截图保存（只有检测到二维码才会保存）
+
+**注意：** 脚本会自动检测二维码，如果没有检测到二维码不会保存截图。
+
+### 3. 运行同步
 
 #### 方式1：仅同步结构（快速）
 
@@ -108,19 +136,22 @@ node src/smart-sync.js --download --force
 ## 目录结构
 
 ```
-tencent-doc-sync/
-├── SKILL.md                # 本文档
-├── package.json            # 依赖配置
+tencent-doc-download/
+├── SKILL.md                     # 本文档
+├── package.json                 # 依赖配置
+├── scripts/
+│   ├── get-qr-code.js          # 登录二维码获取工具（推荐）
+│   └── download.js             # 原始下载脚本（备用）
 ├── src/
-│   ├── smart-sync.js       # 主同步脚本
-│   ├── core/               # 核心逻辑
-│   │   └── downloader.js   # 内容下载器
-│   └── utils/              # 工具模块
-│       ├── hash.js         # Hash 计算
-│       ├── logger.js       # 日志输出
-│       └── metadata.js     # 元数据管理
-├── test-sync.sh            # 测试脚本
-└── .tencent-docs-session/  # 会话数据（保留）
+│   ├── smart-sync.js           # 主同步脚本
+│   ├── core/                   # 核心逻辑
+│   │   └── downloader.js       # 内容下载器
+│   └── utils/                  # 工具模块
+│       ├── hash.js             # Hash 计算
+│       ├── logger.js           # 日志输出
+│       └── metadata.js         # 元数据管理
+├── test-sync.sh                # 测试脚本
+└── .tencent-docs-session/      # 会话数据（保留）
 ```
 
 ## 工作流程
@@ -175,6 +206,23 @@ node src/smart-sync.js --download
 ### Q: 如何更换目标仓库？
 A: 修改 `src/smart-sync.js` 中的 `REPO_DIR` 常量。
 
+### Q: 如何获取登录二维码？
+A: 使用专门的二维码获取脚本：
+```bash
+node scripts/get-qr-code.js
+```
+脚本会自动完成所有登录步骤（包括点击 Agree 按钮），并验证二维码是否出现。
+
+### Q: 为什么需要点击 Agree 按钮？
+A: 这是腾讯文档的安全机制。登录流程需要：
+1. 点击"登录"
+2. 点击微信登录
+3. 点击 "Log in now"
+4. **点击 "Agree"** ← 关键步骤！
+5. 才会显示二维码
+
+脚本会自动完成所有步骤，并验证二维码是否真的出现。
+
 ### Q: 首次下载需要登录怎么办？
 A: 脚本会自动打开浏览器窗口，手动登录后按 Enter 继续。登录信息会保存在 `.tencent-docs-session/` 目录。
 
@@ -192,6 +240,13 @@ A: Puppeteer 需要等待页面加载，这是正常的。可以：
 3. 关闭其他占用带宽的应用
 
 ## 更新日志
+
+### v2.2.0 (2026-02-28)
+- ✅ 添加专门的登录二维码获取工具 `scripts/get-qr-code.js`
+- ✅ 自动完成所有登录步骤（包括点击 Agree 按钮）
+- ✅ 自动检测并验证二维码是否出现
+- ✅ 改进文档和错误处理
+- ✅ 固化登录流程，避免重复犯错
 
 ### v2.1.0 (2026-02-28)
 - ✅ 集成内容下载功能（Puppeteer + Turndown）
