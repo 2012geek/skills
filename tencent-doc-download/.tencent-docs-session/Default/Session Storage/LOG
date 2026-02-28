@@ -1,5 +1,16 @@
-2026/01/23-17:17:50.780 14c13a Reusing MANIFEST /home/chenlening/workspace/mylerobot-doc/skills/tencent-doc-download/.tencent-docs-session/Default/Session Storage/MANIFEST-000001
-2026/01/23-17:17:50.780 14c13a Recovering log #4
-2026/01/23-17:17:50.781 14c13a Level-0 table #6: started
-2026/01/23-17:17:50.787 14c13a Level-0 table #6: 19359 bytes OK
-2026/01/23-17:17:50.795 14c13a Delete type=0 #4
+2026/02/28-13:25:14.246 278d14f Reusing MANIFEST /Users/chenlening/workspace/skills/tencent-doc-download/.tencent-docs-session/Default/Session Storage/MANIFEST-000001
+2026/02/28-13:25:14.247 278d14f Recovering log #10
+2026/02/28-13:25:14.247 278d14f Level-0 table #12: started
+2026/02/28-13:25:14.255 278d14f Level-0 table #12: 18604 bytes OK
+2026/02/28-13:25:14.255 278d14f Recovering log #12
+2026/02/28-13:25:14.256 278d14f Reusing old log /Users/chenlening/workspace/skills/tencent-doc-download/.tencent-docs-session/Default/Session Storage/000012.log 
+2026/02/28-13:25:14.257 278d14f Delete type=0 #10
+2026/02/28-13:25:14.257 278d14f Delete type=2 #13
+2026/02/28-13:25:14.259 278d152 Compacting 4@0 + 0@1 files
+2026/02/28-13:25:14.265 278d152 Generated table #13@0: 5 keys, 6331 bytes
+2026/02/28-13:25:14.265 278d152 Compacted 4@0 + 0@1 files => 6331 bytes
+2026/02/28-13:25:14.265 278d152 compacted to: files[ 0 1 0 0 0 0 0 ]
+2026/02/28-13:25:14.266 278d152 Delete type=2 #3
+2026/02/28-13:25:14.266 278d152 Delete type=2 #12
+2026/02/28-13:25:14.266 278d152 Delete type=2 #6
+2026/02/28-13:25:14.266 278d152 Delete type=2 #9

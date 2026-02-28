@@ -1,2 +1,3 @@
-2026/01/23-17:03:16.495 149ce5 Creating DB /home/chenlening/workspace/mylerobot-doc/skills/tencent-doc-download/.tencent-docs-session/Default/Extension Rules since it was missing.
-2026/01/23-17:03:16.521 149ce5 Reusing MANIFEST /home/chenlening/workspace/mylerobot-doc/skills/tencent-doc-download/.tencent-docs-session/Default/Extension Rules/MANIFEST-000001
+2026/02/28-13:21:49.265 2780a99 Reusing MANIFEST /Users/chenlening/workspace/skills/tencent-doc-download/.tencent-docs-session/Default/Extension Rules/MANIFEST-000001
+2026/02/28-13:21:49.265 2780a99 Recovering log #3
+2026/02/28-13:21:49.265 2780a99 Reusing old log /Users/chenlening/workspace/skills/tencent-doc-download/.tencent-docs-session/Default/Extension Rules/000003.log 

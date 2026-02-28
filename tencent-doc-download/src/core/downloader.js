@@ -284,24 +284,20 @@ async function manualLogin(page, spaceUrl) {
   await page.goto('https://docs.qq.com/', { waitUntil: 'networkidle2' });
 
   console.log('─'.repeat(50));
-  console.log('登录说明：');
-  console.log('1. 浏览器窗口已打开');
-  console.log('2. 请在浏览器中完成登录');
-  console.log('3. 登录完成后按 Enter 继续');
+  console.log('⚠️  请在浏览器中完成登录！');
+  console.log('─'.repeat(50));
+  console.log('1. 浏览器窗口已打开腾讯文档首页');
+  console.log('2. 请使用微信或 QQ 扫码登录');
+  console.log('3. 登录成功后，脚本会在 30 秒后自动继续');
   console.log('─'.repeat(50) + '\n');
 
-  // 在非交互模式下自动等待
-  await new Promise(resolve => {
-    const readline = require('readline').createInterface({
-      input: process.stdin,
-      output: process.stdout
-    });
-    readline.question('完成登录后按 Enter 继续...', () => {
-      readline.close();
-      resolve();
-    });
-  });
-
+  // 等待 30 秒让用户登录
+  for (let i = 30; i > 0; i--) {
+    process.stdout.write(`\r⏱️  倒计时: ${i} 秒...`);
+    await sleep(1000);
+  }
+  process.stdout.write('\r✅ 继续执行...    \n\n');
+  
   return true;
 }
 
@@ -347,6 +343,18 @@ export async function downloadSpace(config) {
     console.log(`\n📂 访问空间: ${spaceUrl}`);
     await page.goto(spaceUrl, { waitUntil: 'networkidle2' });
     await sleep(TIMING.INITIAL_LOAD_DELAY);
+
+    // 再次检查是否登录成功
+    const hasDocs = await page.evaluate((selector) => {
+      const items = document.querySelectorAll(selector);
+      return items.length;
+    }, CSS_SELECTORS.TREE_ITEM);
+
+    if (hasDocs === 0) {
+      console.log('⚠️  未找到文档，可能需要重新登录');
+      console.log('提示：请确保在浏览器中已完成登录，然后重新运行脚本\n');
+      return { success: 0, failed: 0, skipped: 0 };
+    }
 
     // 获取所有顶级节点
     const topLevelItems = await page.evaluate((selector) => {
