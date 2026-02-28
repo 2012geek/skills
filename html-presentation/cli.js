@@ -30,11 +30,22 @@ program
   .option('-t, --theme <theme>', 'Theme name', 'seriph')
   .option('--title <title>', 'Presentation title')
   .option('--author <author>', 'Author name')
+  .option('--verify', 'Enable verification with LLM judgment')
+  .option('--no-verify', 'Disable verification')
+  .option('--interactive', 'Enable human intervention mode', false)
+  .option('--max-iterations <n>', 'Max auto-fix iterations', '3')
+  .option('--threshold <score>', 'Quality threshold (0-100)', '80')
   .action(async (input, options) => {
     try {
       logger.info(`Generating presentation from ${input}`);
 
-      const generator = new SlideGenerator();
+      const generator = new SlideGenerator({
+        verifyEnabled: options.verify,
+        interactive: options.interactive,
+        maxIterations: parseInt(options.maxIterations),
+        threshold: parseInt(options.threshold)
+      });
+
       const presentation = await generator.generate(input, {
         theme: options.theme,
         title: options.title,
@@ -51,6 +62,13 @@ program
       logger.success(`Presentation generated: ${outputFile}`);
       logger.info(`Theme: ${presentation.theme}`);
       logger.info(`Slides: ${presentation.slides.length}`);
+
+      if (options.verify) {
+        logger.info('Verification enabled with LLM judgment');
+        if (options.interactive) {
+          logger.info('Interactive mode: will prompt for manual fixes if needed');
+        }
+      }
     } catch (error) {
       logger.error(`Error: ${error.message}`);
       process.exit(1);
