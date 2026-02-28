@@ -145,4 +145,56 @@ export class LLMJudge {
   passes(judgment) {
     return judgment.overall >= 80;
   }
+
+  /**
+   * Evaluate slide quality from image buffer
+   * @param {Buffer} imageBuffer - Image buffer
+   * @param {string} mediaType - Media type (e.g., 'image/png')
+   * @returns {Promise<Object>} Judgment result
+   */
+  async evaluate(imageBuffer, mediaType = 'image/png') {
+    if (!Buffer.isBuffer(imageBuffer)) {
+      throw new Error('Expected imageBuffer to be a Buffer');
+    }
+
+    const base64Image = imageBuffer.toString('base64');
+
+    // Build message
+    const message = {
+      role: 'user',
+      content: [
+        {
+          type: 'text',
+          text: this.agentPrompt
+        },
+        {
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: mediaType,
+            data: base64Image
+          }
+        }
+      ]
+    };
+
+    // Call Claude API
+    try {
+      const response = await this.client.messages.create({
+        model: this.model,
+        max_tokens: this.maxTokens,
+        messages: [message]
+      });
+
+      // Extract JSON response
+      const content = response.content[0].text;
+      return this.parseJudgment(content);
+    } catch (error) {
+      throw new Error(`Claude API call failed: ${error.message}`);
+    }
+  }
+
+  close() {
+    // No resources to clean up for now
+  }
 }
