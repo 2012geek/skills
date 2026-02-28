@@ -1,124 +1,128 @@
 ---
-name: tencent-doc-download
-description: "腾讯文档空间下载工具。用于递归下载腾讯文档空间中的所有文档，支持 Markdown 格式导出、会话保持、目录结构保留。已成功下载 101 个文档。"
+name: tencent-doc-sync
+description: "腾讯文档智能同步工具。显示详细统计（扫描/无变化/需更新/新增/更新/删除），支持 Hash 对比和删除同步。"
 license: MIT
 ---
 
-# 腾讯文档空间下载 Skill
+# 腾讯文档智能同步 Skill
 
 ## 概述
 
-本 skill 用于从腾讯文档空间批量下载文档，自动转换为 Markdown 格式，保持目录结构。
+本 skill 用于智能同步腾讯文档到本地 Markdown 仓库，提供详细的同步统计。
 
 ### 核心功能
 
-- **自动登录保持** - 使用 userDataDir 保存会话，一次登录长期有效
-- **递归下载** - 自动展开目录，下载所有子文档
-- **Markdown 转换** - 使用 Turndown 将 HTML 转换为 Markdown
-- **目录结构保留** - 文件按原始目录组织保存
-- **内容智能提取** - 使用正确的选择器 `.css-1t3wwj8 e1w3g4nf1` 获取文档内容
-
-## 工作流程
-
-```
-1. 首次登录 → 保存会话
-2. 访问空间 → 获取文档列表
-3. 递归处理 → 展开目录，下载子文档
-4. 点击文档 → 提取内容
-5. HTML → Markdown → 保存文件
-```
-
-## 使用场景
-
-当用户需要：
-- 批量下载腾讯文档空间的所有文档
-- 将腾讯文档转换为 Markdown 格式
-- 备份腾讯文档到本地
+- **智能 Hash 对比** - 忽略 `synced_at` 时间戳，只对比实际内容变化
+- **详细统计** - 显示扫描数、无变化数、需更新数、新增、更新、删除
+- **删除同步** - 自动删除本地多余文档
+- **空文件夹处理** - 自动创建占位文档
 
 ## 快速开始
 
-### 1. 首次登录（仅一次）
+### 1. 安装依赖
 
 ```bash
-cd skills/tencent-doc-download
+cd skills/tencent-doc-sync
 npm install
-node scripts/login_manual.js
 ```
 
-浏览器会自动打开，扫码或密码登录后，等待 90 秒让会话保存。
-
-### 2. 下载文档
+### 2. 运行同步
 
 ```bash
-node scripts/download.js
+./test-sync.sh
+# 或
+node src/smart-sync.js
+```
+
+### 3. 查看统计
+
+```
+============================================================
+📊 同步统计
+============================================================
+
+📋 扫描结果:
+  • 总扫描文档: 91 个
+  • 无变化文档: 91 个
+  • 需更新文档: 0 个
+
+🔧 执行操作:
+  • 新增: 0 个
+  • 更新: 0 个
+  • 删除: 0 个
+  • 失败: 0 个
+
+📁 文件夹统计:
+  • 总文件夹数: 21 个
+
+✅ 同步完成！
+============================================================
 ```
 
 ## 配置选项
 
-编辑 `scripts/download.js` 中的 `DEFAULT_CONFIG`:
+编辑 `src/smart-sync.js` 中的常量：
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `spaceUrl` | string | `https://docs.qq.com/space/DZmNFWUZTVkVpYnpF?nlc=1` | 腾讯文档空间 URL |
-| `outputDir` | string | `./tencent_auto_download` | 输出目录 |
-| `headless` | boolean | `false` | 是否无头模式（首次登录需设为 false） |
-| `timeout` | number | `60000` | 页面加载超时（毫秒） |
-| `skipExisting` | boolean | `true` | 跳过已存在的文件 |
-| `userDataDir` | string | `./.tencent-docs-session` | 会话保存目录 |
+| `REPO_DIR` | string | `/Users/chenlening/workspace/mylerobot-doc` | 目标仓库路径 |
+| `DOCS_DIR` | string | `tencent-docs` | 文档目录名 |
+| `META_FILE` | string | `.sync-metadata.json` | 元数据文件名 |
 
 ## 目录结构
 
 ```
-skills/tencent-doc-download/
-├── SKILL.md                    # 本文档
-├── scripts/
-│   ├── download.js             # 主下载脚本
-│   ├── login_manual.js         # 手动登录脚本
-│   └── debug-real-content.js   # 内容调试工具
-├── tencent_auto_download/      # 下载的文档
-└── .tencent-docs-session/     # 保存的会话
+tencent-doc-sync/
+├── SKILL.md                # 本文档
+├── src/
+│   ├── smart-sync.js       # 主同步脚本
+│   ├── core/               # 核心逻辑（待扩展）
+│   └── utils/              # 工具模块
+│       ├── hash.js         # Hash 计算
+│       ├── logger.js       # 日志输出
+│       └── metadata.js     # 元数据管理
+├── test-sync.sh            # 测试脚本
+└── .tencent-docs-session/  # 会话数据（保留）
 ```
 
-## 技术实现
+## 工具模块说明
 
-### 内容选择器
+### hash.js
+- `generateHash(content)` - 生成内容哈希（忽略 synced_at）
+- `compareContent(c1, c2)` - 对比两个内容是否相同
 
-文档内容位于 `.css-1t3wwj8` 或包含 `e1w3g4nf1` 的元素中：
+### logger.js
+- `displayStats(stats)` - 显示统计信息
+- `separator(char, length)` - 输出分隔线
 
-```javascript
-const contentArea = document.querySelector('.css-1t3wwj8, [class*="e1w3g4nf1"]');
-```
-
-### 子文档发现
-
-使用"展开前后对比法"：
-1. 记录展开前所有 node-id
-2. 点击 switcher 展开目录
-3. 记录展开后所有 node-id
-4. 差值即为子文档
-
-### 目录+文件概念
-
-腾讯文档中，一个节点可以既是目录又是文件：
-- 有 switcher = 可以展开显示子文档
-- 节点本身也可以有独立内容
+### metadata.js
+- `loadMetadata(file)` - 加载元数据
+- `saveMetadata(file, data)` - 保存元数据
+- `getLastSyncTime(meta)` - 获取上次同步时间
 
 ## 常见问题
 
-### Q: 会话过期怎么办？
-A: 重新运行 `node scripts/login_manual.js` 重新登录。
+### Q: 为什么所有文档都显示"需更新"？
+A: 已修复！现在 Hash 计算会忽略 `synced_at` 时间戳，只对比实际内容。
 
-### Q: 如何下载不同的空间？
-A: 修改 `scripts/download.js` 中的 `DEFAULT_CONFIG.spaceUrl`。
+### Q: 如何更换目标仓库？
+A: 修改 `src/smart-sync.js` 中的 `REPO_DIR` 常量。
 
-### Q: 下载的内容不完整？
-A: 检查选择器是否正确匹配 `.css-1t3wwj8` 元素。
+### Q: 测试脚本做了什么？
+A: `test-sync.sh` 会：
+1. Git stash 备份当前状态
+2. 运行同步
+3. 检查是否有不必要的文件变化
+4. 自动恢复备份
 
 ## 更新日志
 
+### v2.0.0 (2026-02-28)
+- ✅ 修复 Hash 对比 bug（忽略 synced_at）
+- ✅ 显示详细统计（扫描/无变化/需更新/新增/更新/删除）
+- ✅ 重构为模块化结构
+- ✅ 添加自动化测试脚本
+
 ### v1.0.0 (2025-01-23)
-- ✅ 实现基本下载功能
-- ✅ 支持会话保持
-- ✅ 递归处理目录
-- ✅ 修复内容选择器（使用 `.css-1t3wwj8`）
-- ✅ 成功下载 101 个文档
+- ✅ 基本同步功能
+- ✅ 文档下载功能

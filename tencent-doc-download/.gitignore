@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Cache and logs
+cache/
+logs/
+
+# Auth data
+auth/
+
+# Test outputs
+output/
+
+# Metadata (user-specific)
+.sync-metadata.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
