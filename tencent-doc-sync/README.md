@@ -6,13 +6,13 @@
 
 ```bash
 # 进入目录
-cd /Users/chenlening/workspace/skills/tencent-doc-download
+cd /Users/chenlening/workspace/skills/tencent-doc-sync
 
-# 获取二维码（截图保存到桌面）
-node scripts/get-qr-code.js
+# 获取登录二维码（截图保存到桌面）
+node scripts/login.js
 
 # 或者指定输出路径
-node scripts/get-qr-code.js --output=/path/to/qr.png
+node scripts/login.js --output=/path/to/qr.png
 ```
 
 ## 工作原理
@@ -55,6 +55,6 @@ A: 保存在 `.tencent-docs-session/` 目录，下次使用会自动恢复登录
 
 ## 相关文件
 
-- `scripts/get-qr-code.js` - 二维码获取脚本
+- `scripts/login.js` - 腾讯文档登录工具（获取登录二维码）
 - `src/smart-sync.js` - 主同步脚本
 - `SKILL.md` - 完整文档

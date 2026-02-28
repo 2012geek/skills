@@ -33,13 +33,13 @@ npm install
 
 ```bash
 # 仅截图保存
-node scripts/get-qr-code.js
+node scripts/login.js
 
 # 截图并发送到邮箱（需配置邮箱密码）
-node scripts/get-qr-code.js --email
+node scripts/login.js --email
 
 # 指定输出路径
-node scripts/get-qr-code.js --output=/path/to/qr.png
+node scripts/login.js --output=/path/to/qr.png
 ```
 
 **自动完成步骤：**
@@ -207,9 +207,9 @@ node src/smart-sync.js --download
 A: 修改 `src/smart-sync.js` 中的 `REPO_DIR` 常量。
 
 ### Q: 如何获取登录二维码？
-A: 使用专门的二维码获取脚本：
+A: 使用专门的登录脚本：
 ```bash
-node scripts/get-qr-code.js
+node scripts/login.js
 ```
 脚本会自动完成所有登录步骤（包括点击 Agree 按钮），并验证二维码是否出现。
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * 腾讯文档登录二维码获取工具
+ * 腾讯文档登录工具
  * 
  * 功能：
  * 1. 自动打开腾讯文档登录页面
@@ -11,9 +11,9 @@
  * 5. 可选：发送到邮箱
  * 
  * 用法：
- *   node get-qr-code.js                    # 仅截图
- *   node get-qr-code.js --email            # 截图并发送到配置的邮箱
- *   node get-qr-code.js --output /path     # 指定输出路径
+ *   node login.js                    # 仅截图
+ *   node login.js --email            # 截图并发送到配置的邮箱
+ *   node login.js --output /path     # 指定输出路径
  */
 
 const puppeteer = require('puppeteer');
