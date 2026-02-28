@@ -343,6 +343,24 @@ export async function downloadSpace(config) {
     console.log('  等待页面加载...');
     await sleep(8000);  // 增加到 8 秒
 
+    // 调试：检查页面内容
+    const pageInfo = await page.evaluate(() => {
+      const treeItems = document.querySelectorAll('.base-tree-sortable-item[data-node-id]');
+      const allItems = document.querySelectorAll('[class*="tree"]');
+      const bodyText = document.body.innerText.substring(0, 500);
+      
+      return {
+        treeItemsCount: treeItems.length,
+        allTreeElements: allItems.length,
+        pageText: bodyText
+      };
+    });
+
+    console.log('  页面调试信息:');
+    console.log(`    - 文档树节点: ${pageInfo.treeItemsCount} 个`);
+    console.log(`    - 包含'tree'的元素: ${pageInfo.allTreeElements} 个`);
+    console.log(`    - 页面文本预览: ${pageInfo.pageText.substring(0, 100)}...`);
+
     // 获取所有顶级节点
     const topLevelItems = await page.evaluate((selector) => {
       return Array.from(document.querySelectorAll(selector))
