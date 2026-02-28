@@ -8,11 +8,13 @@ const { HealthChecker } = require('./health-checker');
 const { ErrorHandler } = require('./error-handler');
 const { Logger } = require('./logger');
 const { ContentAnalyzer } = require('./content-analyzer');
+const { PuppeteerCapturer } = require('./puppeteer-capturer');
 
 module.exports = {
   PlatformDetector,
   HealthChecker,
   ErrorHandler,
   Logger,
-  ContentAnalyzer
+  ContentAnalyzer,
+  PuppeteerCapturer
 };
