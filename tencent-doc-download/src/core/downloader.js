@@ -263,15 +263,17 @@ async function processDocumentTree(page, nodeId, outputDir, parentPath = [], dep
 }
 
 /**
- * 手动登录流程
+ * 手动登录流程（仅在需要时使用）
  */
 async function manualLogin(page, spaceUrl) {
   console.log('检查登录状态...');
-  await page.goto(spaceUrl, { waitUntil: 'networkidle2' });
+  await page.goto(spaceUrl, { waitUntil: 'networkidle2', timeout: 30000 });
   await sleep(TIMING.LOGIN_CHECK_DELAY);
 
+  // 检查是否有文档树节点（表示已登录）
   const isLoggedIn = await page.evaluate((selector) => {
     const items = document.querySelectorAll(selector);
+    console.log('Found items:', items.length);
     return items.length > 0;
   }, CSS_SELECTORS.TREE_ITEM);
 
@@ -280,24 +282,8 @@ async function manualLogin(page, spaceUrl) {
     return true;
   }
 
-  console.log('未登录。需要手动登录。');
-  await page.goto('https://docs.qq.com/', { waitUntil: 'networkidle2' });
-
-  console.log('─'.repeat(50));
-  console.log('⚠️  请在浏览器中完成登录！');
-  console.log('─'.repeat(50));
-  console.log('1. 浏览器窗口已打开腾讯文档首页');
-  console.log('2. 请使用微信或 QQ 扫码登录');
-  console.log('3. 登录成功后，脚本会在 30 秒后自动继续');
-  console.log('─'.repeat(50) + '\n');
-
-  // 等待 30 秒让用户登录
-  for (let i = 30; i > 0; i--) {
-    process.stdout.write(`\r⏱️  倒计时: ${i} 秒...`);
-    await sleep(1000);
-  }
-  process.stdout.write('\r✅ 继续执行...    \n\n');
-  
+  // 如果未登录，输出提示但继续尝试
+  console.log('⚠️  未检测到登录状态，但会继续尝试访问...\n');
   return true;
 }
 
@@ -320,10 +306,10 @@ export async function downloadSpace(config) {
     
     // 尝试使用系统 Chrome
     const executablePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+    const hasSystemChrome = await fs.access(executablePath).then(() => true).catch(() => false);
     
-    browser = await puppeteer.launch({
+    const browserOptions = {
       headless,
-      executablePath: await fs.access(executablePath).then(() => executablePath).catch(() => undefined),
       userDataDir,
       args: [
         '--no-sandbox',
@@ -331,7 +317,14 @@ export async function downloadSpace(config) {
         '--disable-blink-features=AutomationControlled'
       ],
       defaultViewport: { width: 1280, height: 800 }
-    });
+    };
+
+    if (hasSystemChrome) {
+      browserOptions.executablePath = executablePath;
+      console.log('  使用系统 Chrome 浏览器');
+    }
+
+    browser = await puppeteer.launch(browserOptions);
 
     const page = await browser.newPage();
     await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36');
@@ -341,20 +334,14 @@ export async function downloadSpace(config) {
 
     // 访问空间
     console.log(`\n📂 访问空间: ${spaceUrl}`);
-    await page.goto(spaceUrl, { waitUntil: 'networkidle2' });
-    await sleep(TIMING.INITIAL_LOAD_DELAY);
-
-    // 再次检查是否登录成功
-    const hasDocs = await page.evaluate((selector) => {
-      const items = document.querySelectorAll(selector);
-      return items.length;
-    }, CSS_SELECTORS.TREE_ITEM);
-
-    if (hasDocs === 0) {
-      console.log('⚠️  未找到文档，可能需要重新登录');
-      console.log('提示：请确保在浏览器中已完成登录，然后重新运行脚本\n');
-      return { success: 0, failed: 0, skipped: 0 };
-    }
+    await page.goto(spaceUrl, { 
+      waitUntil: 'networkidle2',
+      timeout: 60000  // 增加超时时间到 60 秒
+    });
+    
+    // 等待更长时间确保页面完全加载
+    console.log('  等待页面加载...');
+    await sleep(8000);  // 增加到 8 秒
 
     // 获取所有顶级节点
     const topLevelItems = await page.evaluate((selector) => {
