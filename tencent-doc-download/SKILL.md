@@ -1,6 +1,6 @@
 ---
 name: tencent-doc-sync
-description: "腾讯文档智能同步工具。显示详细统计（扫描/无变化/需更新/新增/更新/删除），支持 Hash 对比和删除同步。"
+description: "腾讯文档智能同步工具。显示详细统计（扫描/无变化/需更新/新增/更新/删除），支持 Hash 对比和删除同步，集成内容下载功能。"
 license: MIT
 ---
 
@@ -8,7 +8,7 @@ license: MIT
 
 ## 概述
 
-本 skill 用于智能同步腾讯文档到本地 Markdown 仓库，提供详细的同步统计。
+本 skill 用于智能同步腾讯文档到本地 Markdown 仓库，提供详细的同步统计，并支持内容下载。
 
 ### 核心功能
 
@@ -16,6 +16,7 @@ license: MIT
 - **详细统计** - 显示扫描数、无变化数、需更新数、新增、更新、删除
 - **删除同步** - 自动删除本地多余文档
 - **空文件夹处理** - 自动创建占位文档
+- **内容下载** - 使用 Puppeteer 自动下载文档实际内容
 
 ## 快速开始
 
@@ -28,10 +29,24 @@ npm install
 
 ### 2. 运行同步
 
+#### 方式1：仅同步结构（快速）
+
 ```bash
 ./test-sync.sh
 # 或
 node src/smart-sync.js
+```
+
+#### 方式2：下载内容 + 同步（推荐）
+
+```bash
+node src/smart-sync.js --download
+```
+
+#### 方式3：强制重新下载所有内容
+
+```bash
+node src/smart-sync.js --download --force
 ```
 
 ### 3. 查看统计
@@ -61,6 +76,16 @@ node src/smart-sync.js
 
 ## 配置选项
 
+### 命令行参数
+
+| 参数 | 简写 | 说明 |
+|------|------|------|
+| `--download` | `-d` | 启用内容下载模式（使用 Puppeteer 下载实际内容） |
+| `--force` | `-f` | 强制重新下载所有内容（忽略已存在的文件） |
+| `--help` | `-h` | 显示帮助信息 |
+
+### 配置常量
+
 编辑 `src/smart-sync.js` 中的常量：
 
 | 配置项 | 类型 | 默认值 | 说明 |
@@ -69,20 +94,56 @@ node src/smart-sync.js
 | `DOCS_DIR` | string | `tencent-docs` | 文档目录名 |
 | `META_FILE` | string | `.sync-metadata.json` | 元数据文件名 |
 
+### 下载器配置
+
+编辑 `src/core/downloader.js` 中的配置：
+
+| 配置项 | 说明 |
+|--------|------|
+| `spaceUrl` | 腾讯文档空间 URL |
+| `headless` | 是否使用无头模式（false = 显示浏览器） |
+| `skipExisting` | 是否跳过已存在的文件 |
+| `userDataDir` | 会话数据保存目录 |
+
 ## 目录结构
 
 ```
 tencent-doc-sync/
 ├── SKILL.md                # 本文档
+├── package.json            # 依赖配置
 ├── src/
 │   ├── smart-sync.js       # 主同步脚本
-│   ├── core/               # 核心逻辑（待扩展）
+│   ├── core/               # 核心逻辑
+│   │   └── downloader.js   # 内容下载器
 │   └── utils/              # 工具模块
 │       ├── hash.js         # Hash 计算
 │       ├── logger.js       # 日志输出
 │       └── metadata.js     # 元数据管理
 ├── test-sync.sh            # 测试脚本
 └── .tencent-docs-session/  # 会话数据（保留）
+```
+
+## 工作流程
+
+### 仅同步结构（默认）
+
+```
+1. 扫描本地文档
+2. 对比远程文档树
+3. 创建/更新/删除文档占位符
+4. 保存元数据
+```
+
+### 下载内容 + 同步（--download）
+
+```
+1. 启动浏览器（Puppeteer）
+2. 登录腾讯文档（首次需手动）
+3. 遍历文档树，下载实际内容
+4. 转换为 Markdown 格式
+5. 扫描本地文档
+6. 对比并同步结构
+7. 保存元数据
 ```
 
 ## 工具模块说明
@@ -105,8 +166,17 @@ tencent-doc-sync/
 ### Q: 为什么所有文档都显示"需更新"？
 A: 已修复！现在 Hash 计算会忽略 `synced_at` 时间戳，只对比实际内容。
 
+### Q: 为什么文档内容是"文档内容待提取"？
+A: 默认的同步模式只创建文档结构。使用 `--download` 参数下载实际内容：
+```bash
+node src/smart-sync.js --download
+```
+
 ### Q: 如何更换目标仓库？
 A: 修改 `src/smart-sync.js` 中的 `REPO_DIR` 常量。
+
+### Q: 首次下载需要登录怎么办？
+A: 脚本会自动打开浏览器窗口，手动登录后按 Enter 继续。登录信息会保存在 `.tencent-docs-session/` 目录。
 
 ### Q: 测试脚本做了什么？
 A: `test-sync.sh` 会：
@@ -115,7 +185,19 @@ A: `test-sync.sh` 会：
 3. 检查是否有不必要的文件变化
 4. 自动恢复备份
 
+### Q: 下载速度慢怎么办？
+A: Puppeteer 需要等待页面加载，这是正常的。可以：
+1. 使用 `--skip-existing` 跳过已下载的文档
+2. 检查网络连接
+3. 关闭其他占用带宽的应用
+
 ## 更新日志
+
+### v2.1.0 (2026-02-28)
+- ✅ 集成内容下载功能（Puppeteer + Turndown）
+- ✅ 添加 `--download` 参数支持
+- ✅ 添加 `--force` 强制重新下载
+- ✅ 改进文档和帮助信息
 
 ### v2.0.0 (2026-02-28)
 - ✅ 修复 Hash 对比 bug（忽略 synced_at）

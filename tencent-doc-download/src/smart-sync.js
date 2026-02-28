@@ -5,6 +5,7 @@
  * 1. 显示扫描统计（无变化 vs 需更新）
  * 2. 显示操作统计（新增、更新、删除）
  * 3. 支持删除同步
+ * 4. 集成内容下载功能
  */
 
 import { promises as fs } from 'fs';
@@ -13,6 +14,7 @@ import { fileURLToPath } from 'url';
 import { generateHash } from './utils/hash.js';
 import { displayStats, separator } from './utils/logger.js';
 import { loadMetadata, saveMetadata, createMetadata, getLastSyncTime } from './utils/metadata.js';
+import downloadSpace from './core/downloader.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -279,7 +281,32 @@ async function deleteObsoleteDocs() {
 // displayStats 函数已移到 src/utils/logger.js
 
 async function main() {
+  // 解析命令行参数
+  const args = process.argv.slice(2);
+  const shouldDownload = args.includes('--download') || args.includes('-d');
+  const skipExisting = !args.includes('--force');
+
   console.log('🚀 开始智能同步...\n');
+
+  // 如果指定了 --download 参数，先下载内容
+  if (shouldDownload) {
+    console.log('📥 启动内容下载模式...\n');
+    try {
+      const downloadStats = await downloadSpace({
+        spaceUrl: 'https://docs.qq.com/space/DZmNFWUZTVkVpYnpF?nlc=1',
+        outputDir: DOCS_DIR,
+        headless: false,
+        skipExisting: skipExisting,
+        userDataDir: path.join(path.dirname(__dirname), '.tencent-docs-session')
+      });
+
+      console.log('\n✅ 内容下载完成！\n');
+      separator('=');
+    } catch (error) {
+      console.error('❌ 下载失败:', error.message);
+      console.log('\n继续执行结构同步...\n');
+    }
+  }
 
   // 1. 加载上次元数据
   const lastMetadata = await loadMetadata(META_FILE);

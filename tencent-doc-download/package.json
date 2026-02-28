@@ -1,0 +1,24 @@
+{
+  "name": "tencent-doc-sync",
+  "version": "2.1.0",
+  "description": "腾讯文档智能同步工具 - 支持内容下载和增量同步",
+  "type": "module",
+  "main": "src/smart-sync.js",
+  "scripts": {
+    "sync": "node src/smart-sync.js",
+    "download": "node src/smart-sync.js --download",
+    "test": "./test-sync.sh"
+  },
+  "dependencies": {
+    "puppeteer": "^23.0.0",
+    "turndown": "^7.1.2"
+  },
+  "keywords": [
+    "tencent-docs",
+    "sync",
+    "download",
+    "markdown"
+  ],
+  "author": "",
+  "license": "MIT"
+}
