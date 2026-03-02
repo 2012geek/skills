@@ -103,23 +103,13 @@ class SlideGenerator {
     };
   }
 
-  /**
-   * Handle human intervention when auto-fix fails
-   * @param {string} markdown - Slide markdown
-   * @param {Array} attempts - Attempt history
-   * @returns {Promise<Object>} Intervention result
-   */
   async handleIntervention(markdown, attempts) {
     const intervention = new HumanIntervention({
       threshold: this.verifyFixLoop.threshold
     });
-
     return await intervention.handle(markdown, attempts);
   }
 
-  /**
-   * Clean up resources
-   */
   async close() {
     if (this.verifyFixLoop) {
       await this.verifyFixLoop.close();
@@ -127,7 +117,6 @@ class SlideGenerator {
   }
 
   generateSlide(content, metrics) {
-    // Select layout
     const layout = this.layoutSelector.select({
       codeRatio: metrics.avgCodeRatio,
       textRatio: metrics.avgTextRatio,
@@ -137,7 +126,6 @@ class SlideGenerator {
     let markdown = `---\nlayout: ${layout}\n---\n\n`;
     markdown += `## ${content.title}\n\n`;
 
-    // Add content body if available
     if (content.content && content.content.length > 0) {
       markdown += this.tokensToMarkdown(content.content);
     }
@@ -146,8 +134,50 @@ class SlideGenerator {
   }
 
   tokensToMarkdown(tokens) {
-    const marked = require('marked');
-    return marked.parser(tokens);
+    return tokens.map(token => this.tokenToMarkdown(token)).filter(Boolean).join('\n\n');
+  }
+
+  tokenToMarkdown(token) {
+    if (!token) return '';
+    const bt = '`';
+    switch (token.type) {
+      case 'heading':
+        return `${'#'.repeat(token.depth)} ${token.text}`;
+      case 'paragraph':
+        return token.text || (token.tokens ? this.tokensToMarkdown(token.tokens) : '');
+      case 'code':
+        return `${bt}${bt}${bt}${token.lang || ''}\n${token.text}\n${bt}${bt}${bt}`;
+      case 'codespan':
+        return `${bt}${token.text}${bt}`;
+      case 'list':
+        const prefix = token.ordered ? (i => `${i + 1}. `) : () => '- ';
+        return token.items.map((item, i) => `${prefix(i)}${this.tokenToMarkdown(item)}`).join('\n');
+      case 'list_item':
+        return token.text || (token.tokens ? this.tokensToMarkdown(token.tokens) : '');
+      case 'text':
+        return token.raw || token.text || '';
+      case 'strong':
+        return `**${token.text}**`;
+      case 'em':
+        return `*${token.text}*`;
+      case 'link':
+        return `[${token.text}](${token.href})`;
+      case 'image':
+        return `![${token.text}](${token.href})`;
+      case 'space':
+        return '';
+      case 'hr':
+        return '---';
+      case 'table':
+        const header = `| ${token.header.map(h => h.text).join(' | ')} |`;
+        const separator = `| ${token.header.map(() => '---').join(' | ')} |`;
+        const rows = token.rows.map(row => `| ${row.map(c => c.text || '').join(' | ')} |`).join('\n');
+        return `${header}\n${separator}\n${rows}`;
+      case 'blockquote':
+        return `> ${token.text || ''}`;
+      default:
+        return token.raw || token.text || '';
+    }
   }
 
   generateFrontmatter(analysis) {
