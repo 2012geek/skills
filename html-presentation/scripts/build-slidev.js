@@ -338,13 +338,34 @@ async function build(inputPath, outputPath, config = {}) {
   try {
     console.log(`🔨 Running Slidev build...`);
     // Use local slidev binary to avoid version conflicts
-    const slidevBin = path.join(__dirname, '../node_modules/@slidev/cli/bin/slidev.js');
+    const slidevBin = path.join(__dirname, '../node_modules/@slidev/cli/bin/slidev.mjs');
     const slidevCmd = fs.existsSync(slidevBin) ? `node ${slidevBin}` : `npx @slidev/cli@0.49.29`;
     // Build with download enabled for PDF export
-    execSync(`${slidevCmd} build ${slidesPath} --out ${outputDir} --download`, {
+    // Use absolute path for tempDir to avoid cwd issues
+    const absTempDir = path.resolve(tempDir);
+// NOTE: Removed --emptyOutDir as it is not supported in newer @slidev/cli versions
+    const cmd = `yes '' | THEME_ROOT=${projectRoot}/node_modules ${slidevCmd} build ${slidesPath} --out ${outputDir}`;
+    console.log(`[DEBUG] Slidev build command: ${cmd}`);
+    console.log(`[DEBUG] tempDir: ${absTempDir}`);
+    console.log(`[DEBUG] outputDir: ${outputDir}`);
+
+    const startTime = Date.now();
+    execSync(cmd, {
       stdio: 'inherit',
-      cwd: tempDir
+      cwd: absTempDir,
+      shell: '/bin/bash',
+      env: {
+        ...process.env,
+        THEME_ROOT: path.join(projectRoot, 'node_modules')
+      }
     });
+
+    const elapsed = Date.now() - startTime;
+    console.log(`[DEBUG] Build elapsed: ${elapsed}ms`);
+
+    console.log('✅ Built with Slidev');
+    console.log(`📄 Output: ${resolvedOutputPath}`);
+    console.log(`🎨 Theme: ${finalConfig.theme}`);
 
     console.log(`✅ Built with Slidev`);
     console.log(`📄 Output: ${resolvedOutputPath}`);

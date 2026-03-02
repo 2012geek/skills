@@ -3,21 +3,41 @@
 /**
  * Content Measurer
  * 基于实际渲染高度的内容测量引擎
- * @version 1.0.0
+ * @version 2.0.0 - 支持浏览器测量模式
  */
+
+// 延迟加载 BrowserMeasurer（仅在需要时）
+let BrowserMeasurer = null
 
 /**
  * 内容测量器类
  * 用于估算幻灯片内容的实际渲染高度
+ * 支持两种模式：
+ * - 'estimate': 基于 CSS 估算（快速，不需要浏览器）
+ * - 'browser': 基于真实浏览器渲染（准确，需要 Playwright）
  */
 class ContentMeasurer {
   constructor(config = {}) {
+    // 测量模式
+    this.mode = config.mode || 'estimate'  // 'estimate' 或 'browser'
+
     // 基础测量配置
     this.config = {
       slideHeight: config.slideHeight || 720,        // 标准幻灯片高度（px）
       slideWidth: config.slideWidth || 1280,        // 标准幻灯片宽度（px）
       padding: config.padding || { top: 60, bottom: 60, left: 80, right: 80 },
       safeHeight: config.safeHeight || 0.85         // 安全系数（保留 15% 余量）
+    }
+
+    // 浏览器测量器（延迟初始化）
+    this.browserMeasurer = null
+
+    // 浏览器测量器配置
+    this.browserConfig = {
+      timeout: config.timeout || 10000,
+      headless: config.headless !== false,
+      screenshot: config.screenshot || false,
+      debug: config.debug || false
     }
 
     // 元素高度估算（基于 CSS 样式）
@@ -57,9 +77,65 @@ class ContentMeasurer {
   /**
    * 测量幻灯片内容高度
    * @param {string} markdown - Markdown 内容
-   * @returns {Object} { height, percentage, fits, breakdown }
+   * @param {Object} options - 额外选项
+   * @returns {Promise<Object>} { height, percentage, fits, breakdown }
    */
-  measureSlide(markdown) {
+  async measureSlide(markdown, options = {}) {
+    // 浏览器模式：使用真实渲染
+    if (this.mode === 'browser' || options.mode === 'browser') {
+      return await this.measureWithBrowser(markdown, options)
+    }
+
+    // 估算模式：使用 CSS 估算（默认，兼容旧代码）
+    return this.measureByEstimate(markdown)
+  }
+
+  /**
+   * 使用浏览器进行测量
+   * @param {string} markdown - Markdown 内容
+   * @param {Object} options - 额外选项
+   * @returns {Promise<Object>} 测量结果
+   */
+  async measureWithBrowser(markdown, options = {}) {
+    try {
+      // 延迟加载 BrowserMeasurer
+      if (!BrowserMeasurer) {
+        BrowserMeasurer = require('./browser-measurer.js').BrowserMeasurer
+      }
+
+      // 初始化浏览器测量器
+      if (!this.browserMeasurer) {
+        this.browserMeasurer = new BrowserMeasurer({
+          slideWidth: this.config.slideWidth,
+          slideHeight: this.config.slideHeight,
+          ...this.browserConfig
+        })
+      }
+
+      // 使用浏览器测量
+      const result = await this.browserMeasurer.measureSlide(markdown, {
+        theme: options.theme || 'seriph',
+        useCache: options.useCache !== false
+      })
+
+      return result
+
+    } catch (err) {
+      console.warn(`⚠️  浏览器测量失败，降级到估算模式: ${err.message}`)
+
+      // 降级到估算模式
+      const estimateResult = this.measureByEstimate(markdown)
+      estimateResult.mode = 'estimate (fallback)'
+      return estimateResult
+    }
+  }
+
+  /**
+   * 使用估算进行测量
+   * @param {string} markdown - Markdown 内容
+   * @returns {Object} 测量结果
+   */
+  measureByEstimate(markdown) {
     const breakdown = this.analyzeContent(markdown)
     const totalHeight = this.calculateHeight(breakdown)
     const availableHeight = this.getAvailableHeight()
@@ -72,7 +148,8 @@ class ContentMeasurer {
       percentage: Math.round(percentage),
       fits,
       breakdown,
-      overflow: Math.round(totalHeight - availableHeight)
+      overflow: Math.round(totalHeight - availableHeight),
+      mode: 'estimate'
     }
   }
 
@@ -365,6 +442,25 @@ class ContentMeasurer {
   }
 
   /**
+   * 关闭测量器（释放浏览器资源）
+   */
+  async close() {
+    if (this.browserMeasurer) {
+      await this.browserMeasurer.close()
+      this.browserMeasurer = null
+    }
+  }
+
+  /**
+   * 清除缓存
+   */
+  async clearCache() {
+    if (this.browserMeasurer) {
+      await this.browserMeasurer.clearCache()
+    }
+  }
+
+  /**
    * 获取内容统计信息
    * @param {string} markdown - Markdown 内容
    * @returns {Object} 统计信息
@@ -401,25 +497,29 @@ module.exports = { ContentMeasurer }
 
 // 如果直接运行此文件，执行测试
 if (require.main === module) {
-  const measurer = new ContentMeasurer()
+  (async () => {
+    // 测试估算模式
+    console.log('📏 Content Measurer 测试\n')
 
-  // 测试用例
-  const testCases = [
-    {
-      name: '简单标题',
-      content: '# Hello World'
-    },
-    {
-      name: '标题+段落',
-      content: `# Introduction
+    console.log('=== 估算模式测试 ===')
+    const estimateMeasurer = new ContentMeasurer({ mode: 'estimate' })
+
+    const testCases = [
+      {
+        name: '简单标题',
+        content: '# Hello World'
+      },
+      {
+        name: '标题+段落',
+        content: `# Introduction
 
 This is a test paragraph with some text.
 
 Another paragraph here.`
-    },
-    {
-      name: '代码块',
-      content: `# Code Example
+      },
+      {
+        name: '代码块',
+        content: `# Code Example
 
 \`\`\`javascript
 function hello() {
@@ -429,10 +529,10 @@ function hello() {
 }
 \`\`\`
 `
-    },
-    {
-      name: '混合内容',
-      content: `# Complete Example
+      },
+      {
+        name: '混合内容',
+        content: `# Complete Example
 
 ## Features
 
@@ -449,21 +549,45 @@ console.log(x + y);
 ## Conclusion
 
 This is the end.`
+      }
+    ]
+
+    for (const testCase of testCases) {
+      console.log(`--- ${testCase.name} ---`)
+      const result = await estimateMeasurer.measureSlide(testCase.content)
+      console.log(`高度: ${result.height}px / ${result.available}px (${result.percentage}%)`)
+      console.log(`适配: ${result.fits ? '✅' : '❌'}`)
+      console.log(`模式: ${result.mode}`)
+      console.log(`元素: ${result.breakdown?.length || 'N/A'} 个`)
+      console.log()
     }
-  ]
 
-  console.log('📏 Content Measurer 测试\n')
+    const stats = estimateMeasurer.getContentStats(testCases[3].content)
+    console.log('📊 内容统计:')
+    console.log(JSON.stringify(stats, null, 2))
 
-  for (const testCase of testCases) {
-    console.log(`--- ${testCase.name} ---`)
-    const result = measurer.measureSlide(testCase.content)
-    console.log(`高度: ${result.height}px / ${result.available}px (${result.percentage}%)`)
-    console.log(`适配: ${result.fits ? '✅' : '❌'}`)
-    console.log(`元素: ${result.breakdown.length} 个`)
-    console.log()
-  }
+    // 测试浏览器模式（可选）
+    console.log('\n=== 浏览器模式测试 ===')
+    const browserMeasurer = new ContentMeasurer({
+      mode: 'browser',
+      debug: false
+    })
 
-  const stats = measurer.getContentStats(testCases[3].content)
-  console.log('📊 内容统计:')
-  console.log(JSON.stringify(stats, null, 2))
+    try {
+      console.log('测试简单内容...')
+      const browserResult = await browserMeasurer.measureSlide('# Hello from Browser')
+      console.log(`高度: ${browserResult.height}px / ${browserResult.available}px (${browserResult.percentage}%)`)
+      console.log(`适配: ${browserResult.fits ? '✅' : '❌'}`)
+      console.log(`模式: ${browserResult.mode}`)
+    } catch (err) {
+      console.warn(`浏览器模式跳过: ${err.message}`)
+    }
+
+    // 清理
+    await browserMeasurer.close()
+    console.log('\n✅ 测试完成')
+  })().catch(err => {
+    console.error('测试失败:', err)
+    process.exit(1)
+  })
 }

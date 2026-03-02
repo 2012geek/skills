@@ -1,412 +1,260 @@
-#!/usr/bin/env node
-
 /**
  * Image Processor
- * 图片处理模块：下载远程图片到本地缓存
- * @version 1.0.0
+ * 处理 Markdown 中的图片，支持本地/网络/Base64
  */
 
-const fs = require('fs').promises
-const path = require('path')
-const crypto = require('crypto')
-const https = require('https')
-const http = require('http')
-const { promisify } = require('util')
-const exec = promisify(require('child_process').exec)
+const fs = require('fs').promises;
+const path = require('path');
+const crypto = require('crypto');
+const https = require('https');
+const http = require('http');
 
-/**
- * 确保目录存在
- */
-async function ensureDir(dirPath) {
-  try {
-    await fs.mkdir(dirPath, { recursive: true })
-  } catch (err) {
-    if (err.code !== 'EEXIST') throw err
-  }
-}
-
-/**
- * 检查文件是否存在
- */
-async function pathExists(filePath) {
-  try {
-    await fs.access(filePath)
-    return true
-  } catch {
-    return false
-  }
-}
-
-/**
- * 图片处理器类
- */
 class ImageProcessor {
-  constructor(config = {}) {
-    this.config = {
-      cacheDir: config.cacheDir || 'assets/images',
-      timeout: config.timeout || 10000,
-      maxConcurrent: config.maxConcurrent || 5,
-      skipExisting: config.skipExisting !== false,
-      createHashedNames: config.createHashedNames || false,
-      githubToken: config.githubToken || process.env.GITHUB_TOKEN || null
-    }
+  constructor(options = {}) {
+    this.downloadRemote = options.downloadRemote ?? true;
+    this.publicDir = options.publicDir || 'public/images';
+    this.hashNames = options.hashNames ?? true;
+    this.maxRetries = options.maxRetries || 3;
+    this.processedImages = new Map(); // 缓存已处理的图片
   }
 
   /**
-   * 处理 markdown 中的所有图片
+   * 处理 Markdown 中的所有图片
+   * @param {string} markdown - 原始 Markdown
+   * @param {string} inputPath - 输入文件路径
+   * @param {string} outputDir - 输出目录
+   * @returns {Object} { markdown, stats }
    */
-  async processImages(markdown, outputDir = process.cwd()) {
+  async process(markdown, inputPath, outputDir) {
+    const inputDir = path.dirname(path.resolve(inputPath));
+    const publicPath = path.join(outputDir, this.publicDir);
+    
+    // 确保 public 目录存在
+    await fs.mkdir(publicPath, { recursive: true });
+    
+    // 提取所有图片
+    const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+    const images = [];
+    let match;
+    
+    while ((match = imageRegex.exec(markdown)) !== null) {
+      images.push({
+        alt: match[1],
+        original: match[2],
+        full: match[0],
+        index: match.index
+      });
+    }
+    
+    console.log(`📷 发现 ${images.length} 张图片`);
+    
     const stats = {
-      processed: 0,
-      cached: 0,
+      total: images.length,
+      local: 0,
+      remote: 0,
+      base64: 0,
+      copied: 0,
+      downloaded: 0,
       skipped: 0,
       errors: []
-    }
-
-    // 1. 提取所有图片 URL
-    const images = this.extractImages(markdown)
-    console.log(`📸 检测到 ${images.length} 张图片`)
-
-    if (images.length === 0) {
-      return { updatedMarkdown: markdown, stats }
-    }
-
-    // 2. 分类：本地 / 远程
-    const { local, remote } = this.classifyImages(images)
-    console.log(`   本地: ${local.length} 张, 远程: ${remote.length} 张`)
-
-    // 3. 处理本地图片：复制到 assets/
-    for (const img of local) {
-      await this.copyLocalImage(img, outputDir, stats)
-    }
-
-    // 4. 处理远程图片：下载到 assets/（并发控制）
-    const downloadPromises = remote.map(img =>
-      this.downloadRemoteImage(img, outputDir, stats)
-    )
-
-    // 批量下载（限制并发数）
-    for (let i = 0; i < downloadPromises.length; i += this.config.maxConcurrent) {
-      const batch = downloadPromises.slice(i, i + this.config.maxConcurrent)
-      await Promise.all(batch)
-    }
-
-    // 5. 更新 markdown 中的图片路径
-    const updatedMarkdown = this.updateImagePaths(markdown, images, outputDir)
-
-    console.log(`\n✅ 图片处理完成:`)
-    console.log(`   - 处理: ${stats.processed} 张`)
-    console.log(`   - 已缓存: ${stats.cached} 张`)
-    console.log(`   - 跳过: ${stats.skipped} 张`)
-    if (stats.errors.length > 0) {
-      console.log(`   - 失败: ${stats.errors.length} 张`)
-      stats.errors.forEach(err => console.log(`     ❌ ${err}`))
-    }
-
-    return { updatedMarkdown, stats }
-  }
-
-  /**
-   * 提取 markdown 中的所有图片
-   */
-  extractImages(markdown) {
-    const images = []
-
-    // 匹配 Markdown 格式:
-    // Match markdown format
-
-
-    const mdImgRegex = /!\[([^\]]*)\]\(([^)]+)\)/g
-    let match
-
-    while ((match = mdImgRegex.exec(markdown)) !== null) {
-      images.push({
-        type: 'markdown',
-        alt: match[1],
-        url: match[2].trim(),
-        original: match[0]
-      })
-    }
-
-    // 匹配 HTML 格式: <img src="url">
-    const htmlImgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi
-
-    while ((match = htmlImgRegex.exec(markdown)) !== null) {
-      images.push({
-        type: 'html',
-        url: match[1].trim(),
-        original: match[0]
-      })
-    }
-
-    return images
-  }
-
-  /**
-   * 分类图片：本地 vs 远程
-   */
-  classifyImages(images) {
-    const local = []
-    const remote = []
-
+    };
+    
+    // 处理每张图片
     for (const img of images) {
-      if (this.isRemoteUrl(img.url)) {
-        remote.push(img)
-      } else {
-        local.push(img)
+      try {
+        const result = await this.processImage(img, inputDir, publicPath, outputDir);
+        
+        if (result.newPath) {
+          // 更新 markdown
+          const newTag = `![${img.alt}](${result.newPath})`;
+          markdown = markdown.replace(img.full, newTag);
+          
+          if (result.type === 'local') stats.copied++;
+          else if (result.type === 'remote') stats.downloaded++;
+          else stats.skipped++;
+        }
+        
+        stats[result.type === 'local' ? 'local' : result.type === 'remote' ? 'remote' : 'base64']++;
+        
+      } catch (error) {
+        console.warn(`⚠️  图片处理失败: ${img.original} - ${error.message}`);
+        stats.errors.push({
+          image: img.original,
+          error: error.message
+        });
       }
     }
-
-    return { local, remote }
+    
+    console.log(`✅ 图片处理完成: ${stats.copied} 复制, ${stats.downloaded} 下载, ${stats.skipped} 跳过`);
+    
+    return { markdown, stats };
   }
 
   /**
-   * 判断是否为远程 URL
+   * 处理单张图片
    */
-  isRemoteUrl(url) {
-    return url.startsWith('http://') || url.startsWith('https://')
-  }
-
-  /**
-   * 复制本地图片到 assets/
-   */
-  async copyLocalImage(img, outputDir, stats) {
-    const srcPath = path.resolve(process.cwd(), img.url)
-    const fileName = path.basename(srcPath)
-    const destPath = path.join(outputDir, this.config.cacheDir, fileName)
-
-    try {
-      // 创建目标目录
-      await ensureDir(path.dirname(destPath))
-
-      // 检查是否已存在
-      if (this.config.skipExisting && await pathExists(destPath)) {
-        img.localPath = destPath
-        img.relativePath = path.relative(outputDir, destPath)
-        stats.skipped++
-        return
-      }
-
-      // 复制文件
-      await fs.copyFile(srcPath, destPath)
-      img.localPath = destPath
-      img.relativePath = path.relative(outputDir, destPath)
-      stats.processed++
-      console.log(`📋 已复制: ${fileName}`)
-    } catch (err) {
-      const altText = img.alt || img.url
-      stats.errors.push(`本地图片复制失败: ${altText} - ${err.message}`)
+  async processImage(img, inputDir, publicPath, outputDir) {
+    const imgPath = img.original;
+    
+    // Base64 图片 - 不处理
+    if (imgPath.startsWith('data:')) {
+      return { type: 'base64', newPath: null };
     }
-  }
-
-  /**
-   * 下载远程图片到 assets/
-   */
-  async downloadRemoteImage(img, outputDir, stats) {
-    const fileName = this.generateFileName(img.url)
-    const destPath = path.join(outputDir, this.config.cacheDir, fileName)
-
-    try {
-      // 创建目标目录
-      await ensureDir(path.dirname(destPath))
-
-      // 检查是否已存在
-      if (this.config.skipExisting && await pathExists(destPath)) {
-        img.localPath = destPath
-        img.relativePath = path.relative(outputDir, destPath)
-        stats.cached++
-        console.log(`✓ 已缓存: ${fileName}`)
-        return
+    
+    // 网络图片
+    if (imgPath.startsWith('http://') || imgPath.startsWith('https://')) {
+      if (this.downloadRemote) {
+        const localPath = await this.downloadImage(imgPath, publicPath);
+        const relativePath = '/' + this.publicDir + '/' + path.basename(localPath);
+        return { type: 'remote', newPath: relativePath };
       }
-
-      // 下载图片
-      const buffer = await this.downloadImage(img.url)
-      const fileSize = buffer.length
-
-      // 保存文件
-      await fs.writeFile(destPath, buffer)
-
-      img.localPath = destPath
-      img.relativePath = path.relative(outputDir, destPath)
-      stats.processed++
-      console.log(`⬇️  已下载: ${fileName} (${this.formatSize(fileSize)})`)
-    } catch (err) {
-      stats.errors.push(`下载失败: ${img.url} - ${err.message}`)
-      console.error(`❌ ${err.message}`)
+      return { type: 'remote', newPath: null };
+    }
+    
+    // 本地图片
+    const absolutePath = path.isAbsolute(imgPath) 
+      ? imgPath 
+      : path.join(inputDir, imgPath);
+    
+    if (await this.fileExists(absolutePath)) {
+      const localPath = await this.copyImage(absolutePath, publicPath);
+      const relativePath = '/' + this.publicDir + '/' + path.basename(localPath);
+      return { type: 'local', newPath: relativePath };
+    } else {
+      throw new Error(`图片不存在: ${absolutePath}`);
     }
   }
 
   /**
-   * 下载图片
+   * 复制本地图片
    */
-  downloadImage(url) {
+  async copyImage(srcPath, publicPath) {
+    // 检查缓存
+    if (this.processedImages.has(srcPath)) {
+      return this.processedImages.get(srcPath);
+    }
+    
+    const ext = path.extname(srcPath);
+    const hash = this.hashNames 
+      ? this.generateHash(srcPath) 
+      : path.basename(srcPath, ext);
+    
+    const destName = `${hash}${ext}`;
+    const destPath = path.join(publicPath, destName);
+    
+    // 如果已存在且 hash 相同，跳过
+    if (await this.fileExists(destPath)) {
+      this.processedImages.set(srcPath, destPath);
+      return destPath;
+    }
+    
+    await fs.copyFile(srcPath, destPath);
+    this.processedImages.set(srcPath, destPath);
+    
+    return destPath;
+  }
+
+  /**
+   * 下载网络图片
+   */
+  async downloadImage(url, publicPath) {
+    // 检查缓存
+    if (this.processedImages.has(url)) {
+      return this.processedImages.get(url);
+    }
+    
+    const ext = this.getExtensionFromUrl(url) || '.png';
+    const hash = this.generateHash(url);
+    const destName = `${hash}${ext}`;
+    const destPath = path.join(publicPath, destName);
+    
+    // 如果已存在，跳过
+    if (await this.fileExists(destPath)) {
+      this.processedImages.set(url, destPath);
+      return destPath;
+    }
+    
+    // 下载图片
+    for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
+      try {
+        const buffer = await this.download(url);
+        await fs.writeFile(destPath, buffer);
+        this.processedImages.set(url, destPath);
+        return destPath;
+      } catch (error) {
+        if (attempt === this.maxRetries) {
+          throw new Error(`下载失败 (${this.maxRetries} 次尝试): ${error.message}`);
+        }
+        await this.sleep(1000 * attempt);
+      }
+    }
+  }
+
+  /**
+   * 下载文件
+   */
+  download(url) {
     return new Promise((resolve, reject) => {
-      const protocol = url.startsWith('https') ? https : http
-
-      const headers = {
-        'User-Agent': 'Mozilla/5.0 (compatible; HTML-Presentation-Builder/3.0)'
-      }
-
-      // 添加 GitHub 认证（如果配置了 token）
-      if (this.config.githubToken && url.includes('github.com')) {
-        headers['Authorization'] = `Bearer ${this.config.githubToken}`
-      }
-
-      const options = {
-        timeout: this.config.timeout,
-        headers
-      }
-
-      const req = protocol.get(url, options, (res) => {
-        // 重定向处理
-        if (res.statusCode === 301 || res.statusCode === 302) {
-          const redirectUrl = res.headers.location
-          if (!redirectUrl) {
-            return reject(new Error('重定向但没有 Location 头'))
-          }
-          return this.downloadImage(redirectUrl)
-            .then(resolve)
-            .catch(reject)
+      const client = url.startsWith('https') ? https : http;
+      const chunks = [];
+      
+      client.get(url, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          // 处理重定向
+          this.download(res.headers.location).then(resolve).catch(reject);
+          return;
         }
-
+        
         if (res.statusCode !== 200) {
-          return reject(new Error(`HTTP ${res.statusCode}`))
+          reject(new Error(`HTTP ${res.statusCode}`));
+          return;
         }
-
-        const chunks = []
-        res.on('data', chunk => chunks.push(chunk))
-        res.on('end', () => resolve(Buffer.concat(chunks)))
-        res.on('error', reject)
-      })
-
-      req.on('timeout', () => {
-        req.destroy()
-        reject(new Error('下载超时'))
-      })
-
-      req.on('error', reject)
-    })
+        
+        res.on('data', chunk => chunks.push(chunk));
+        res.on('end', () => resolve(Buffer.concat(chunks)));
+        res.on('error', reject);
+      }).on('error', reject);
+    });
   }
 
   /**
-   * 生成缓存文件名
+   * 从 URL 获取扩展名
    */
-  generateFileName(url) {
-    if (this.config.createHashedNames) {
-      const ext = this.getExtension(url)
-      return crypto.createHash('md5').update(url).digest('hex') + ext
-    }
-
+  getExtensionFromUrl(url) {
     try {
-      const urlObj = new URL(url)
-      const pathname = urlObj.pathname
-      const originalName = path.basename(pathname)
-
-      // 如果文件名太长或包含特殊字符，使用哈希
-      if (originalName.length > 50 || /[^\w\-\.]/.test(originalName)) {
-        const ext = this.getExtension(url)
-        return crypto.createHash('md5').update(url).digest('hex') + ext
-      }
-
-      return originalName
+      const pathname = new URL(url).pathname;
+      const ext = path.extname(pathname);
+      return ext.match(/\.(png|jpg|jpeg|gif|webp|svg)$/i) ? ext : null;
     } catch {
-      return crypto.createHash('md5').update(url).digest('hex') + '.img'
+      return null;
     }
   }
 
   /**
-   * 获取文件扩展名
+   * 生成 Hash
    */
-  getExtension(url) {
+  generateHash(input) {
+    return crypto.createHash('md5').update(input).digest('hex').slice(0, 12);
+  }
+
+  /**
+   * 检查文件是否存在
+   */
+  async fileExists(filePath) {
     try {
-      const urlObj = new URL(url)
-      const pathname = urlObj.pathname
-      const ext = path.extname(pathname)
-      return ext || '.png'
+      await fs.access(filePath);
+      return true;
     } catch {
-      return '.png'
+      return false;
     }
   }
 
   /**
-   * 更新 markdown 中的图片路径
+   * Sleep
    */
-  updateImagePaths(markdown, images, outputDir) {
-    let updated = markdown
-
-    for (const img of images) {
-      if (img.localPath) {
-        // 从 localPath 中提取文件名
-        const fileName = path.basename(img.localPath)
-        // 始终使用 /images/xxx 格式（Slidev 标准格式）
-        const webPath = '/images/' + fileName
-
-        if (img.type === 'markdown') {
-          updated = updated.replace(
-            img.original,
-            `![${img.alt}](${webPath})`
-          )
-        } else {
-          // HTML 格式 - 完整替换整个标签
-          const widthMatch = img.original.match(/width=["']([^"']+)["']/)
-          const widthAttr = widthMatch ? ` width="${widthMatch[1]}"` : ''
-          updated = updated.replace(
-            img.original,
-            `<img src="${webPath}"${widthAttr}/>`
-          )
-        }
-      }
-    }
-
-    return updated
-  }
-
-  /**
-   * 格式化文件大小
-   */
-  formatSize(bytes) {
-    if (bytes < 1024) return bytes + ' B'
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
-    return (bytes / 1024 / 1024).toFixed(1) + ' MB'
+  sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 }
 
-module.exports = { ImageProcessor }
-
-// 如果直接运行此文件，执行测试
-if (require.main === module) {
-  const processor = new ImageProcessor({
-    cacheDir: 'test-assets/images',
-    skipExisting: true
-  })
-
-  // 测试用例
-  const testMarkdown = `# Test Slide
-
-This is a test slide with images.
-
-Remote image 1:
-![Remote Image](https://via.placeholder.com/300x200)
-
-Remote image 2:
-<img src="https://via.placeholder.com/400x300/6366f1/ffffff?text=Test+Image" alt="HTML Image">
-
-End of slide.
-`
-
-  console.log('🖼️  Image Processor 测试\n')
-  console.log('输入 Markdown:')
-  console.log(testMarkdown)
-  console.log('\n--- 开始处理 ---\n')
-
-  processor.processImages(testMarkdown, '/tmp/test-presentation')
-    .then(({ updatedMarkdown, stats }) => {
-      console.log('\n--- 处理结果 ---')
-      console.log('更新后的 Markdown:')
-      console.log(updatedMarkdown)
-      console.log('\n统计:', JSON.stringify(stats, null, 2))
-    })
-    .catch(err => {
-      console.error('处理失败:', err)
-    })
-}
+module.exports = { ImageProcessor };

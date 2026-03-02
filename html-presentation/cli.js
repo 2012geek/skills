@@ -46,22 +46,15 @@ program
         threshold: parseInt(options.threshold)
       });
 
-      const presentation = await generator.generate(input, {
+      const result = await generator.generate(input, {
         theme: options.theme,
         title: options.title,
-        author: options.author
+        author: options.author,
+        output: options.output
       });
 
-      const markdown = generator.renderToMarkdown(presentation);
-
-      const outputFile = options.output ||
-        input.replace(/\.md$/, '.slides.md');
-
-      await fs.promises.writeFile(outputFile, markdown);
-
-      logger.success(`Presentation generated: ${outputFile}`);
-      logger.info(`Theme: ${presentation.theme}`);
-      logger.info(`Slides: ${presentation.slides.length}`);
+      logger.success(`Presentation generated: ${result.outputPath}`);
+      logger.info(`Slides: ${result.stats.totalSlides}`);
 
       if (options.verify) {
         logger.info('Verification enabled with LLM judgment');
