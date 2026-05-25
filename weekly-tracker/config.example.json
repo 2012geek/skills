@@ -1,0 +1,39 @@
+{
+  "projects": [
+    {
+      "name": "example-project",
+      "platform": "github",
+      "owner": "my-org",
+      "repo": "my-repo",
+      "cloneUrl": "git@github.com:my-org/my-repo.git",
+      "defaultBranch": "main",
+      "active": true,
+      "target": {
+        "goal": "Example target goal",
+        "description": "Optional longer description of the target",
+        "setAt": "2026-01-01"
+      }
+    }
+  ],
+  "platforms": {
+    "github": {
+      "tokenEnv": "GITHUB_TOKEN"
+    },
+    "atomicgit": {
+      "tokenEnv": "ATOMICGIT_TOKEN",
+      "apiUrl": "https://api.atomicgit.com"
+    },
+    "gitlab": {
+      "tokenEnv": "GITLAB_TOKEN",
+      "apiUrl": "https://gitlab.com"
+    }
+  },
+  "schedule": {
+    "dayOfWeek": "monday",
+    "time": "09:00"
+  },
+  "server": {
+    "port": 3456,
+    "host": "0.0.0.0"
+  }
+}
