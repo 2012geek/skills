@@ -6,7 +6,8 @@
   "scripts": {
     "collect": "node scripts/collect.js",
     "serve": "node scripts/serve.js",
-    "summary": "node scripts/collect.js --summary-only"
+    "summary": "node scripts/collect.js --summary-only",
+    "test": "jest"
   },
   "dependencies": {
     "better-sqlite3": "^11.0.0",
