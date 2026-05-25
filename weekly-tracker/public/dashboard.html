@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Weekly Project Tracker</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Weekly Project Tracker</h1>
+      <div class="week-nav">
+        <button id="prev-week">&larr;</button>
+        <span id="week-label">Loading...</span>
+        <button id="next-week">&rarr;</button>
+        <input type="date" id="date-picker" style="display:none">
+        <button id="date-picker-btn" title="Jump to date">&#128197;</button>
+      </div>
+    </header>
+
+    <section class="summary-cards" id="summary-cards">
+      <div class="card"><div class="card-value" id="stat-projects">-</div><div class="card-label">Active Projects</div></div>
+      <div class="card"><div class="card-value" id="stat-commits">-</div><div class="card-label">Commits</div></div>
+      <div class="card"><div class="card-value" id="stat-files">-</div><div class="card-label">Files Changed</div></div>
+      <div class="card"><div class="card-value" id="stat-authors">-</div><div class="card-label">Authors</div></div>
+    </section>
+
+    <section class="project-table" id="project-table">
+      <table>
+        <thead>
+          <tr>
+            <th>Project</th>
+            <th>Commits</th>
+            <th>Authors</th>
+            <th>Target</th>
+            <th>Overall</th>
+            <th>This Week</th>
+          </tr>
+        </thead>
+        <tbody id="project-rows"></tbody>
+      </table>
+    </section>
+
+    <section class="ai-summary" id="ai-summary">
+      <h2>AI Weekly Summary</h2>
+      <p id="summary-text">Select a week to see the summary.</p>
+    </section>
+
+    <section class="qa-panel" id="qa-panel">
+      <h2>Ask About Your Projects</h2>
+      <div class="chat-messages" id="chat-messages"></div>
+      <div class="chat-input">
+        <input type="text" id="question-input" placeholder="e.g., what did Zhang San work on this week?">
+        <button id="ask-btn">Ask</button>
+      </div>
+    </section>
+  </div>
+
+  <script src="/chat.js"></script>
+</body>
+</html>
