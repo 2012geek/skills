@@ -1,0 +1,106 @@
+const simpleGit = require('simple-git');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+
+const CACHE_DIR = path.join(os.tmpdir(), 'weekly-tracker-cache');
+
+async function collectProjectCommits(project, weekStart, weekEnd) {
+  const repoDir = path.join(CACHE_DIR, project.name);
+  const git = simpleGit();
+
+  if (fs.existsSync(path.join(repoDir, '.git'))) {
+    try {
+      await git.cwd(repoDir).fetch('origin');
+      await git.cwd(repoDir).checkout(project.default_branch || project.defaultBranch || 'main');
+      await git.cwd(repoDir).pull('origin', project.default_branch || project.defaultBranch || 'main');
+    } catch (err) {
+      console.warn(`Pull failed for ${project.name}, using cached data: ${err.message}`);
+    }
+  } else {
+    fs.mkdirSync(repoDir, { recursive: true });
+    try {
+      await git.clone(project.clone_url || project.cloneUrl, repoDir, ['--single-branch', '--branch', project.default_branch || project.defaultBranch || 'main']);
+    } catch (err) {
+      console.error(`Clone failed for ${project.name}: ${err.message}`);
+      return null;
+    }
+  }
+
+  const localGit = simpleGit(repoDir);
+
+  const logResult = await localGit.log([
+    '--after', weekStart,
+    '--before', weekEnd,
+    '--no-merges',
+  ]);
+
+  const commits = logResult.all || [];
+
+  if (commits.length === 0) {
+    return {
+      projectId: null,
+      weekStart,
+      weekEnd,
+      commitCount: 0,
+      filesChanged: 0,
+      additions: 0,
+      deletions: 0,
+      topAuthors: [],
+      commitMessages: [],
+      rawLog: '',
+      thisWeekDescription: '',
+    };
+  }
+
+  const authorMap = {};
+  const fileSet = new Set();
+  let totalAdditions = 0;
+  let totalDeletions = 0;
+  const commitMessages = [];
+
+  for (const commit of commits) {
+    const author = commit.author_name;
+    authorMap[author] = (authorMap[author] || 0) + 1;
+
+    commitMessages.push({
+      hash: commit.hash.substring(0, 7),
+      message: commit.message,
+      author,
+      date: commit.date,
+    });
+
+    try {
+      const diff = await localGit.diffSummary([`${commit.hash}~1`, commit.hash]);
+      totalAdditions += diff.insertions || 0;
+      totalDeletions += diff.deletions || 0;
+      for (const f of diff.files || []) {
+        if (f.file) fileSet.add(f.file);
+      }
+    } catch {
+      // Skip diff for initial commits or merge commits
+    }
+  }
+
+  const topAuthors = Object.entries(authorMap)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, count]) => ({ name, commits: count }));
+
+  const rawLog = commits.map((c) => `${c.hash.substring(0, 7)} ${c.author_name}: ${c.message}`).join('\n');
+
+  return {
+    projectId: null,
+    weekStart,
+    weekEnd,
+    commitCount: commits.length,
+    filesChanged: fileSet.size,
+    additions: totalAdditions,
+    deletions: totalDeletions,
+    topAuthors,
+    commitMessages,
+    rawLog,
+    thisWeekDescription: '',
+  };
+}
+
+module.exports = { collectProjectCommits };
