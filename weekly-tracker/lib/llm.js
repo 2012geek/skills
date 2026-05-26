@@ -116,7 +116,7 @@ async function generateWeeklyProgressDescription(projectName, target, commitMess
   }
 
   if (!analysis || !analysis.files_to_read || analysis.files_to_read.length === 0) {
-    return formatWeeklyDescription(analysis);
+    return formatWeeklyDescription(analysis, commitMessages.length);
   }
 
   // Return analysis + files_to_read for stage 2 (collect.js handles file reading)
@@ -165,8 +165,13 @@ async function synthesizeWithFiles(projectName, target, stage1Analysis, fileCont
   return getTextContent(msg.content);
 }
 
-function formatWeeklyDescription(analysis) {
-  if (!analysis) return '';
+function formatWeeklyDescription(analysis, commitCount = 0) {
+  if (!analysis) {
+    if (commitCount > 0) {
+      return `### 已完成\n- 本周有 ${commitCount} 次提交（无法自动分析详情，请手动查看）\n\n### 下一步\n- 请运行 collect 重新采集`;
+    }
+    return '';
+  }
   const parts = [];
   if (analysis.completed && analysis.completed.length > 0) {
     parts.push('### 已完成\n' + analysis.completed.map((c) => `- ${c}`).join('\n'));
@@ -174,7 +179,7 @@ function formatWeeklyDescription(analysis) {
   if (analysis.in_progress && analysis.in_progress.length > 0) {
     parts.push('### 进行中\n' + analysis.in_progress.map((i) => `- ${i}`).join('\n'));
   }
-  return parts.join('\n\n') || '本周无实质性进展';
+  return parts.join('\n\n') || (commitCount > 0 ? `本周有 ${commitCount} 次提交` : '本周无实质性进展');
 }
 
 async function generateOverallProgress(projectName, target, weeklyDescription, commitMessages, fileContents) {

@@ -292,13 +292,15 @@ async function main() {
   // Generate overall weekly summary
   if (reports.length > 0) {
     console.log('\nGenerating weekly summary...');
-    const summary = await generateWeeklySummary(reports, projectTargets);
-
-    // Store the summary in a meta-report (attached to each project as summary)
-    const stats = getWeekSummaryStats(weekStart);
-    console.log(`\n--- Week of ${weekStart} Summary ---`);
-    console.log(summary);
-    console.log(`\nStats: ${stats?.active_projects || 0} active projects, ${stats?.total_commits || 0} commits, ${stats?.total_files_changed || 0} files changed`);
+    try {
+      const summary = await generateWeeklySummary(reports, projectTargets);
+      const stats = getWeekSummaryStats(weekStart);
+      console.log(`\n--- Week of ${weekStart} Summary ---`);
+      console.log(summary);
+      console.log(`\nStats: ${stats?.active_projects || 0} active projects, ${stats?.total_commits || 0} commits, ${stats?.total_files_changed || 0} files changed`);
+    } catch (err) {
+      console.log(`  ⚠ Summary generation failed: ${err.message}`);
+    }
   }
 
   console.log('\nCollection complete.');
