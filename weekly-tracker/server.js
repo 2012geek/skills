@@ -1,7 +1,6 @@
 const express = require('express');
 const path = require('path');
-const { getWeeklyReports, getAllWeekStarts, getTargetForProject, getWeekSummaryStats, getCachedAnswer, cacheAnswer } = require('./lib/db');
-const { askQuestion } = require('./lib/llm');
+const { getWeeklyReports, getAllWeekStarts, getTargetForProject, getWeekSummaryStats, getProjectsRangeData, getProjectTimeline } = require('./lib/db');
 
 const app = express();
 app.use(express.json());
@@ -52,35 +51,30 @@ app.get('/api/weeks', (_req, res) => {
   }
 });
 
-app.post('/api/ask', async (req, res) => {
+app.get('/api/weeks/range', (req, res) => {
   try {
-    const { question, weekStart } = req.body;
-    if (!question || !weekStart) {
-      return res.status(400).json({ error: 'question and weekStart are required' });
+    const { from, to } = req.query;
+    if (!from || !to) {
+      return res.status(400).json({ error: 'from and to query params are required' });
     }
+    const data = getProjectsRangeData(from, to);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-    const cached = getCachedAnswer(weekStart, question);
-    if (cached) {
-      return res.json({ answer: cached.answer, cached: true });
+app.get('/api/project/:name/timeline', (req, res) => {
+  try {
+    const { from, to } = req.query;
+    if (!from || !to) {
+      return res.status(400).json({ error: 'from and to query params are required' });
     }
-
-    const reports = getWeeklyReports(weekStart);
-    if (reports.length === 0) {
-      return res.json({ answer: '该周暂无数据。' });
+    const data = getProjectTimeline(req.params.name, from, to);
+    if (!data) {
+      return res.status(404).json({ error: 'Project not found' });
     }
-
-    const weekData = reports.map((r) => ({
-      project: r.project_name,
-      commits: r.commit_count,
-      authors: JSON.parse(r.top_authors || '[]'),
-      commitMessages: JSON.parse(r.commit_messages || '[]').slice(0, 50),
-      progressDescription: r.this_week_description,
-    }));
-
-    const answer = await askQuestion(question, weekData);
-    cacheAnswer(weekStart, question, answer);
-
-    res.json({ answer, cached: false });
+    res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
