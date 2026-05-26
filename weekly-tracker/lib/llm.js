@@ -233,4 +233,46 @@ function parseJsonField(field) {
   return Array.isArray(field) ? field : [];
 }
 
-module.exports = { generateWeeklySummary, askQuestion, generateWeeklyProgressDescription, synthesizeWithFiles, generateOverallProgress };
+async function generateBaselineProgress(projectName, target, fileContents) {
+  const claude = getClient();
+  if (!claude) return '';
+
+  const filesText = Object.entries(fileContents)
+    .map(([fp, content]) => `=== ${fp} ===\n${content.substring(0, 4000)}${content.length > 4000 ? '\n... [truncated]' : ''}`)
+    .join('\n\n');
+
+  const msg = await claude.messages.create({
+    model: getModel(),
+    max_tokens: 2048,
+    system: `你是一个项目评估师。根据项目目标和当前关键文件的完整内容，生成项目的初始整体进展描述。这是对一个已有代码库的首次分析。
+
+输出严格按以下格式（不要输出其他 markdown 标题）：
+
+### 已完成
+- **模块/功能名** — 基于代码证据描述已实现的功能，引用 \`path/to/file\` 路径
+- ...
+
+### 进行中
+- **模块/功能名** — 基于代码证据发现未完成或进行中的功能，引用路径
+- ...
+
+### 下一步
+- 基于项目目标和当前代码状态推断的下一步行动
+- ...
+
+规则：
+1. 只基于提供的文件内容得出结论，不要猜测
+2. "已完成"中的每一项必须有代码证据（已实现的功能、完整的模块等）
+3. "进行中"是文件内容中能看到动工但明显不完整的功能
+4. 引用具体文件路径
+5. 用中文回答`,
+    messages: [{
+      role: 'user',
+      content: `项目：${projectName}\n目标：${target?.goal || '无'}\n\n关键文件内容：\n\n${filesText}\n\n请生成初始整体进展描述。`,
+    }],
+  });
+
+  return getTextContent(msg.content);
+}
+
+module.exports = { generateWeeklySummary, askQuestion, generateWeeklyProgressDescription, synthesizeWithFiles, generateOverallProgress, generateBaselineProgress };

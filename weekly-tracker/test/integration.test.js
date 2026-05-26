@@ -142,5 +142,6 @@ describe('LLM Module', () => {
     expect(typeof llm.generateWeeklyProgressDescription).toBe('function');
     expect(typeof llm.synthesizeWithFiles).toBe('function');
     expect(typeof llm.generateOverallProgress).toBe('function');
+    expect(typeof llm.generateBaselineProgress).toBe('function');
   });
 });
