@@ -3,69 +3,39 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>每周项目追踪</title>
+  <title>项目时间线</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <div class="container">
     <header>
-      <h1>每周项目追踪</h1>
-      <div class="week-nav">
-        <button id="prev-week">&larr;</button>
-        <span id="week-label">加载中...</span>
-        <button id="next-week">&rarr;</button>
-        <input type="date" id="date-picker" style="display:none">
-        <button id="date-picker-btn" title="Jump to date">&#128197;</button>
+      <h1>项目时间线</h1>
+      <div class="date-range">
+        <input type="date" id="date-from">
+        <span>—</span>
+        <input type="date" id="date-to">
+        <button id="apply-dates">应用</button>
       </div>
     </header>
 
-    <section class="summary-cards" id="summary-cards">
-      <div class="card"><div class="card-value" id="stat-projects">-</div><div class="card-label">活跃项目</div></div>
-      <div class="card"><div class="card-value" id="stat-commits">-</div><div class="card-label">提交数</div></div>
-      <div class="card"><div class="card-value" id="stat-files">-</div><div class="card-label">文件变更</div></div>
-      <div class="card"><div class="card-value" id="stat-authors">-</div><div class="card-label">贡献者</div></div>
-    </section>
-
-    <section class="project-table" id="project-table">
-      <table>
-        <thead>
-          <tr>
-            <th>项目</th>
-            <th>提交数</th>
-            <th>贡献者</th>
-            <th>目标</th>
-            <th>整体进展</th>
-            <th>本周进展</th>
-          </tr>
-        </thead>
-        <tbody id="project-rows"></tbody>
-      </table>
-    </section>
-
-    <section class="ai-summary" id="ai-summary">
-      <h2>AI 周报摘要</h2>
-      <p id="summary-text">选择一周以查看摘要。</p>
-    </section>
-
-    <section class="qa-panel" id="qa-panel">
-      <h2>项目问答</h2>
-      <div class="chat-messages" id="chat-messages"></div>
-      <div class="chat-input">
-        <input type="text" id="question-input" placeholder="例如：这周谁提交最多？主要做了什么？">
-        <button id="ask-btn">提问</button>
-      </div>
-    </section>
-  </div>
-
-  <div class="popover-overlay" id="popover-overlay" style="display:none"></div>
-  <div class="popover" id="popover" style="display:none">
-    <div class="popover-header">
-      <span class="popover-title" id="popover-title"></span>
-      <button class="popover-close" id="popover-close">&times;</button>
+    <div id="loading" class="loading">加载中...</div>
+    <div id="error" class="error-banner" style="display:none"></div>
+    <div id="empty" class="empty-state" style="display:none">
+      暂无数据，请运行 <code>npm run collect</code> 采集数据
     </div>
-    <div class="popover-body" id="popover-body"></div>
+    <div id="empty-range" class="empty-state" style="display:none">
+      所选时间范围内暂无数据
+    </div>
+
+    <div id="overview" class="overview-table" style="display:none">
+      <div class="overview-header">
+        <div class="col-project">项目</div>
+        <div class="col-contributors">贡献者</div>
+        <div class="col-activity">提交活动</div>
+      </div>
+      <div id="overview-rows"></div>
+    </div>
   </div>
-  <script src="/chat.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="/overview.js"></script>
 </body>
 </html>
