@@ -29,6 +29,10 @@ build/
 .slidev-temp/
 *.slidev-temp*.md
 
+# SQLite runtime files
+*.db-shm
+*.db-wal
+
 # Additional debug files
 *.diagram.html
 *.optimized.md
