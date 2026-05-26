@@ -63,23 +63,28 @@ async function collectProjectCommits(project, weekStart, weekEnd) {
     const author = commit.author_name;
     authorMap[author] = (authorMap[author] || 0) + 1;
 
-    commitMessages.push({
-      hash: commit.hash.substring(0, 7),
-      message: commit.message,
-      author,
-      date: commit.date,
-    });
-
+    let changedFiles = [];
     try {
       const diff = await localGit.diffSummary([`${commit.hash}~1`, commit.hash]);
       totalAdditions += diff.insertions || 0;
       totalDeletions += diff.deletions || 0;
       for (const f of diff.files || []) {
-        if (f.file) fileSet.add(f.file);
+        if (f.file) {
+          fileSet.add(f.file);
+          changedFiles.push({ file: f.file, plus: f.insertions || 0, minus: f.deletions || 0 });
+        }
       }
     } catch {
       // Skip diff for initial commits or merge commits
     }
+
+    commitMessages.push({
+      hash: commit.hash.substring(0, 7),
+      message: commit.message,
+      author,
+      date: commit.date,
+      files: changedFiles,
+    });
   }
 
   const topAuthors = Object.entries(authorMap)

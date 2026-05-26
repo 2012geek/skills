@@ -60,23 +60,15 @@ async function main() {
       reports.push({ ...data, project_name: project.name, platform: project.platform });
 
       // Update overall progress
-      if (target && data.commitCount > 0) {
-        const allCommits = db.prepare(`
-          SELECT commit_messages FROM weekly_reports
-          WHERE project_id = ? AND week_start >= ?
-          ORDER BY week_start DESC
-        `).all(project.id, target.set_at || '2020-01-01');
-
-        const allMessages = allCommits.flatMap((r) => {
-          try { return JSON.parse(r.commit_messages); } catch { return []; }
-        });
-
-        if (allMessages.length > 0) {
-          const overall = await generateOverallProgress(
-            allMessages.map((c) => `${c.hash} ${c.author}: ${c.message}`),
-            project.name,
-            target
-          );
+      if (target) {
+        const overall = await generateOverallProgress(
+          target.overall_progress || null,
+          data.thisWeekDescription || '',
+          data.commitCount,
+          project.name,
+          target
+        );
+        if (overall) {
           db.prepare('UPDATE project_targets SET overall_progress = ? WHERE id = ?').run(overall, target.id);
         }
       }

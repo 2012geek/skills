@@ -41,6 +41,7 @@
     "@anthropic-ai/sdk": "^0.78.0",
     "chokidar": "^3.6.0",
     "commander": "^11.1.0",
+    "esbuild": "^0.27.3",
     "js-yaml": "^4.1.0",
     "marked": "^11.2.0",
     "open": "^11.0.0",

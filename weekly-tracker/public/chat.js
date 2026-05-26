@@ -7,13 +7,13 @@ async function loadWeeks() {
     currentWeek = weeks[0].week_start;
     loadWeek(currentWeek);
   } else {
-    document.getElementById('week-label').textContent = 'No data yet';
+    document.getElementById('week-label').textContent = '暂无数据';
   }
 }
 
 async function loadWeek(weekStart) {
   currentWeek = weekStart;
-  document.getElementById('week-label').textContent = `Week of ${weekStart}`;
+  document.getElementById('week-label').textContent = `${weekStart} 周`;
 
   const res = await fetch(`/api/week/${weekStart}`);
   const data = await res.json();
@@ -37,14 +37,14 @@ async function loadWeek(weekStart) {
       `<td>${p.topAuthors.length}</td>` +
       `<td>${p.target ? esc(p.target.goal) : '<span style="color:#999">&mdash;</span>'}</td>` +
       `<td style="font-size:13px">${p.target?.overallProgress || '<span style="color:#999">&mdash;</span>'}</td>` +
-      `<td style="font-size:13px">${p.thisWeekDescription || (p.commitCount === 0 ? '<span style="color:#999">No activity</span>' : '<span style="color:#999">&mdash;</span>')}</td>`;
+      `<td style="font-size:13px">${p.thisWeekDescription || (p.commitCount === 0 ? '<span style="color:#999">暂无活动</span>' : '<span style="color:#999">&mdash;</span>')}</td>`;
 
     const detailTr = document.createElement('tr');
     detailTr.className = 'commit-detail';
     detailTr.id = `detail-${p.name.replace(/\W/g, '_')}`;
     detailTr.innerHTML = `<td colspan="6">${p.commitMessages.map(c =>
       `<span class="hash">${esc(c.hash)}</span> ${esc(c.message)} <span class="author">(${esc(c.author)})</span>`
-    ).join('<br>') || 'No commits'}</td>`;
+    ).join('<br>') || '暂无提交'}</td>`;
 
     tbody.appendChild(tr);
     tbody.appendChild(detailTr);
@@ -52,8 +52,8 @@ async function loadWeek(weekStart) {
 
   document.getElementById('summary-text').textContent =
     data.projects.length === 0
-      ? 'No project data for this week. Run `npm run collect` to pull data.'
-      : 'No summary available for this week.';
+      ? '本周暂无项目数据。请运行 `npm run collect` 采集数据。'
+      : '本周暂无摘要。';
 
   document.querySelectorAll('.expand-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -69,10 +69,10 @@ document.getElementById('ask-btn').addEventListener('click', async () => {
   if (!question) return;
 
   const messages = document.getElementById('chat-messages');
-  messages.innerHTML += `<div class="msg user"><strong>You:</strong> ${esc(question)}</div>`;
+  messages.innerHTML += `<div class="msg user"><strong>你：</strong> ${esc(question)}</div>`;
   input.value = '';
 
-  messages.innerHTML += '<div class="msg assistant"><em>Thinking...</em></div>';
+  messages.innerHTML += '<div class="msg assistant"><em>思考中...</em></div>';
 
   try {
     const res = await fetch('/api/ask', {
@@ -81,9 +81,9 @@ document.getElementById('ask-btn').addEventListener('click', async () => {
       body: JSON.stringify({ question, weekStart: currentWeek }),
     });
     const data = await res.json();
-    messages.lastChild.innerHTML = `<strong>AI:</strong> ${esc(data.answer)}`;
+    messages.lastChild.innerHTML = `<strong>AI：</strong> ${esc(data.answer)}`;
   } catch (err) {
-    messages.lastChild.innerHTML = `<strong>Error:</strong> ${esc(err.message)}`;
+    messages.lastChild.innerHTML = `<strong>错误：</strong> ${esc(err.message)}`;
   }
 
   messages.scrollTop = messages.scrollHeight;

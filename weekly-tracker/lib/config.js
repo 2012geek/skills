@@ -46,7 +46,12 @@ function getWeekRange(date) {
   sunday.setDate(sunday.getDate() + 6);
   sunday.setHours(23, 59, 59, 999);
 
-  const fmt = (d) => d.toISOString().split('T')[0];
+  const fmt = (d) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
   return { weekStart: fmt(monday), weekEnd: fmt(sunday) };
 }
 

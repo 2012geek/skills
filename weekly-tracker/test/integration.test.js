@@ -10,6 +10,14 @@ describe('Database Layer', () => {
     db.getDb();
   });
 
+  afterAll(() => {
+    const rawDb = db.getDb();
+    rawDb.prepare('DELETE FROM weekly_reports WHERE project_id IN (SELECT id FROM projects WHERE name = ?)').run('test-project');
+    rawDb.prepare('DELETE FROM project_targets WHERE project_id IN (SELECT id FROM projects WHERE name = ?)').run('test-project');
+    rawDb.prepare('DELETE FROM qa_cache WHERE question = ?').run('test question');
+    rawDb.prepare('DELETE FROM projects WHERE name = ?').run('test-project');
+  });
+
   test('getAllWeekStarts returns array', () => {
     const weeks = db.getAllWeekStarts();
     expect(Array.isArray(weeks)).toBe(true);

@@ -134,7 +134,7 @@ function getWeeklyReports(weekStart) {
     FROM weekly_reports wr
     JOIN projects p ON wr.project_id = p.id
     WHERE wr.week_start = ?
-    ORDER BY wr.commit_count DESC
+    ORDER BY p.name ASC
   `).all(weekStart);
 }
 
@@ -147,6 +147,7 @@ function getWeekReportForProject(projectId, weekStart) {
 }
 
 function upsertProjectTarget(projectId, target) {
+  const overall = target.overallProgress || '';
   const stmt = db.prepare(`
     INSERT INTO project_targets (project_id, target, description, set_at, overall_progress, active)
     VALUES (@projectId, @target, @description, @setAt, @overallProgress, 1)
@@ -154,14 +155,14 @@ function upsertProjectTarget(projectId, target) {
       target = @target,
       description = @description,
       set_at = @setAt,
-      overall_progress = @overallProgress
+      overall_progress = CASE WHEN @overallProgress != '' THEN @overallProgress ELSE overall_progress END
   `);
   return stmt.run({
     projectId,
     target: target.goal,
     description: target.description || '',
     setAt: target.setAt || null,
-    overallProgress: target.overallProgress || '',
+    overallProgress: overall,
   });
 }
 

@@ -66,7 +66,7 @@ app.post('/api/ask', async (req, res) => {
 
     const reports = getWeeklyReports(weekStart);
     if (reports.length === 0) {
-      return res.json({ answer: 'No data available for that week.' });
+      return res.json({ answer: '该周暂无数据。' });
     }
 
     const weekData = reports.map((r) => ({
