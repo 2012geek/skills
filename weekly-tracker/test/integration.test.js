@@ -14,7 +14,6 @@ describe('Database Layer', () => {
     const rawDb = db.getDb();
     rawDb.prepare('DELETE FROM weekly_reports WHERE project_id IN (SELECT id FROM projects WHERE name = ?)').run('test-project');
     rawDb.prepare('DELETE FROM project_targets WHERE project_id IN (SELECT id FROM projects WHERE name = ?)').run('test-project');
-    rawDb.prepare('DELETE FROM qa_cache WHERE question = ?').run('test question');
     rawDb.prepare('DELETE FROM projects WHERE name = ?').run('test-project');
   });
 
@@ -97,11 +96,43 @@ describe('Database Layer', () => {
     expect(db.getLastAnalyzedSha(p.id)).toBeNull();
   });
 
-  test('cacheAnswer and getCachedAnswer work', () => {
-    db.cacheAnswer('2026-05-19', 'test question', 'test answer');
-    const cached = db.getCachedAnswer('2026-05-19', 'test question');
-    expect(cached).toBeTruthy();
-    expect(cached.answer).toBe('test answer');
+  test('getProjectsRangeData returns timeline data', () => {
+    const data = db.getProjectsRangeData('2026-05-19', '2026-05-25');
+    expect(data).toHaveProperty('projects');
+    expect(data).toHaveProperty('weekLabels');
+    expect(Array.isArray(data.projects)).toBe(true);
+    expect(data.projects.length).toBeGreaterThanOrEqual(1);
+    // Check structure of a project entry
+    const proj = data.projects[0];
+    expect(proj).toHaveProperty('name');
+    expect(proj).toHaveProperty('platform');
+    expect(proj).toHaveProperty('weeklyActivity');
+    expect(proj).toHaveProperty('totalCommits');
+    expect(proj).toHaveProperty('contributors');
+    expect(Array.isArray(proj.contributors)).toBe(true);
+    expect(Array.isArray(proj.weeklyActivity)).toBe(true);
+  });
+
+  test('getProjectTimeline returns project detail', () => {
+    const data = db.getProjectTimeline('test-project', '2026-05-19', '2026-05-25');
+    expect(data).toBeTruthy();
+    expect(data).toHaveProperty('project');
+    expect(data.project.name).toBe('test-project');
+    expect(data).toHaveProperty('target');
+    expect(data).toHaveProperty('weeks');
+    expect(Array.isArray(data.weeks)).toBe(true);
+    expect(data.weeks.length).toBeGreaterThanOrEqual(1);
+    // Check week structure
+    const week = data.weeks[0];
+    expect(week).toHaveProperty('weekStart');
+    expect(week).toHaveProperty('commitCount');
+    expect(week).toHaveProperty('commitMessages');
+    expect(Array.isArray(week.commitMessages)).toBe(true);
+  });
+
+  test('getProjectTimeline returns null for unknown project', () => {
+    const data = db.getProjectTimeline('nonexistent-project', '2026-05-19', '2026-05-25');
+    expect(data).toBeNull();
   });
 });
 
@@ -139,7 +170,6 @@ describe('LLM Module', () => {
   test('exports expected functions', () => {
     const llm = require(path.join(libDir, 'llm'));
     expect(typeof llm.generateWeeklySummary).toBe('function');
-    expect(typeof llm.askQuestion).toBe('function');
     expect(typeof llm.generateWeeklyProgressDescription).toBe('function');
     expect(typeof llm.synthesizeWithFiles).toBe('function');
     expect(typeof llm.generateOverallProgress).toBe('function');
