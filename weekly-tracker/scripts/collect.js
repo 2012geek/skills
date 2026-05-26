@@ -8,7 +8,7 @@ const os = require('os');
 const libDir = path.join(__dirname, '..', 'lib');
 const { getDb, upsertProject, getActiveProjects, upsertWeeklyReport, upsertProjectTarget, getWeeklyReports, getWeekSummaryStats } = require(path.join(libDir, 'db'));
 const { loadConfig, getWeekRange } = require(path.join(libDir, 'config'));
-const { collectProjectCommits, readKeyFiles, getHeadSha, getFirstCommitDate } = require(path.join(libDir, 'git-collector'));
+const { ensureRepo, collectProjectCommits, readKeyFiles, getHeadSha, getFirstCommitDate } = require(path.join(libDir, 'git-collector'));
 const { generateWeeklySummary, generateWeeklyProgressDescription, synthesizeWithFiles, generateOverallProgress, generateBaselineProgress } = require(path.join(libDir, 'llm'));
 
 const args = process.argv.slice(2);
@@ -103,6 +103,13 @@ async function main() {
     const target = db.prepare('SELECT * FROM project_targets WHERE project_id = ? AND active = 1').get(project.id);
     if (target) {
       projectTargets[project.name] = target;
+    }
+
+    // Ensure repo is cloned before any git operations
+    const repoReady = await ensureRepo(project);
+    if (!repoReady) {
+      console.log(`    ⚠ ${project.name}: unreachable, skipping`);
+      continue;
     }
 
     // Detect if this is a new project (no weekly_reports rows yet)

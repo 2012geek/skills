@@ -127,6 +127,7 @@ describe('Express Server', () => {
 describe('Git Collector', () => {
   test('exports expected functions', () => {
     const collector = require(path.join(libDir, 'git-collector'));
+    expect(typeof collector.ensureRepo).toBe('function');
     expect(typeof collector.collectProjectCommits).toBe('function');
     expect(typeof collector.readKeyFiles).toBe('function');
     expect(typeof collector.getHeadSha).toBe('function');

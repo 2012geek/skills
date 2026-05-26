@@ -5,7 +5,7 @@ const os = require('os');
 
 const CACHE_DIR = path.join(os.tmpdir(), 'weekly-tracker-cache');
 
-async function collectProjectCommits(project, weekStart, weekEnd, options = {}) {
+async function ensureRepo(project) {
   const repoDir = path.join(CACHE_DIR, project.name);
   const git = simpleGit();
 
@@ -19,12 +19,28 @@ async function collectProjectCommits(project, weekStart, weekEnd, options = {}) 
     }
   } else {
     fs.mkdirSync(repoDir, { recursive: true });
+    const cloneUrl = project.clone_url || project.cloneUrl;
     try {
-      await git.clone(project.clone_url || project.cloneUrl, repoDir, ['--single-branch', '--branch', project.default_branch || project.defaultBranch || 'main']);
+      if (cloneUrl.startsWith('/') || cloneUrl.startsWith('.')) {
+        // Local path: use --shared for efficiency
+        await git.clone(cloneUrl, repoDir, ['--single-branch', '--branch', project.default_branch || project.defaultBranch || 'main']);
+      } else {
+        await git.clone(cloneUrl, repoDir, ['--single-branch', '--branch', project.default_branch || project.defaultBranch || 'main']);
+      }
     } catch (err) {
       console.error(`Clone failed for ${project.name}: ${err.message}`);
-      return null;
+      return false;
     }
+  }
+  return true;
+}
+
+async function collectProjectCommits(project, weekStart, weekEnd, options = {}) {
+  const repoDir = path.join(CACHE_DIR, project.name);
+
+  if (!fs.existsSync(path.join(repoDir, '.git'))) {
+    const ok = await ensureRepo(project);
+    if (!ok) return null;
   }
 
   const localGit = simpleGit(repoDir);
@@ -152,4 +168,4 @@ async function getFirstCommitDate(project) {
   return log.latest?.date || null;
 }
 
-module.exports = { collectProjectCommits, readKeyFiles, getHeadSha, getFirstCommitDate };
+module.exports = { ensureRepo, collectProjectCommits, readKeyFiles, getHeadSha, getFirstCommitDate };
