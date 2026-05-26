@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>项目详情</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="header-left">
+        <a href="/" class="back-link">&larr; 返回总览</a>
+        <h1>项目时间线</h1>
+      </div>
+      <div class="date-range">
+        <input type="date" id="date-from">
+        <span>—</span>
+        <input type="date" id="date-to">
+        <button id="apply-dates">应用</button>
+      </div>
+    </header>
+
+    <div id="loading" class="loading">加载中...</div>
+    <div id="error" class="error-banner" style="display:none"></div>
+    <div id="empty" class="empty-state" style="display:none">所选时间范围内暂无数据</div>
+
+    <div id="detail" style="display:none">
+      <div class="project-info">
+        <h2 id="project-name"></h2>
+        <span class="project-repo" id="project-repo"></span>
+      </div>
+
+      <div id="target-card" class="target-card" style="display:none">
+        <div class="target-header">
+          <span class="target-goal" id="target-goal"></span>
+        </div>
+        <div class="target-progress" id="target-progress"></div>
+      </div>
+
+      <div class="charts-grid">
+        <div class="chart-container">
+          <h3>提交活动</h3>
+          <canvas id="commit-chart"></canvas>
+        </div>
+        <div class="chart-container">
+          <h3>文件 / 代码行趋势</h3>
+          <canvas id="trend-chart"></canvas>
+        </div>
+      </div>
+
+      <div class="contributors-section" id="contributors-section"></div>
+
+      <div class="weekly-timeline" id="weekly-timeline"></div>
+    </div>
+  </div>
+  <script src="/project.js"></script>
+</body>
+</html>
