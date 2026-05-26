@@ -1,19 +1,18 @@
 ---
 name: weekly-tracker
-description: "Weekly multi-project git activity tracker. Use when you need to collect weekly git commits across projects, generate LLM-powered progress reports, or start the dashboard server. Supports GitHub, AtomicGit, GitLab, and other git platforms."
+description: "Multi-project git timeline tracker. Collect git activity across projects and view project timelines with LLM-powered progress reports."
 ---
 
 # Weekly Project Tracker
 
 ## Overview
 
-Tracks weekly git activity across multiple projects on different platforms (GitHub, AtomicGit, GitLab, etc.). Features a web dashboard with LLM-generated progress summaries and a Q&A chat powered by Claude API.
+Tracks git activity across multiple projects on different platforms (GitHub, AtomicGit, GitLab, etc.). Features a project timeline dashboard with activity charts and LLM-generated progress reports.
 
 ## Commands
 
-- `/weekly-tracker collect` — Pull this week's git data and generate reports
-- `/weekly-tracker serve` — Start the web dashboard server
-- `/weekly-tracker summary` — Print the LLM weekly summary to terminal
+- `/weekly-tracker collect` — Pull git data and generate timeline reports
+- `/weekly-tracker serve` — Start the project timeline dashboard
 
 ## Setup
 
