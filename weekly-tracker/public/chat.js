@@ -11,6 +11,36 @@ async function loadWeeks() {
   }
 }
 
+function makeProgressCell(rawText, emptyLabel) {
+  if (!rawText) return `<span style="color:#999">${esc(emptyLabel || '&mdash;')}</span>`;
+  const preview = rawText
+    .replace(/^### .+\n?/gm, '')
+    .replace(/^\*\*(.+?)\*\*/gm, '$1')
+    .replace(/^[-*] /gm, '')
+    .trim()
+    .substring(0, 80);
+  return `<div class="preview" data-raw="${esc(rawText)}" title="点击查看详情">${esc(preview)}</div>`;
+}
+
+function showPopover(el) {
+  const raw = el.querySelector('.preview')?.dataset.raw;
+  if (!raw) return;
+
+  const header = el.closest('table').querySelector('thead tr');
+  const colIdx = Array.from(el.parentElement.children).indexOf(el);
+  const colTitle = header?.children[colIdx]?.textContent || '详情';
+
+  document.getElementById('popover-title').textContent = colTitle;
+  document.getElementById('popover-body').innerHTML = renderMd(raw);
+  document.getElementById('popover-overlay').style.display = 'block';
+  document.getElementById('popover').style.display = 'flex';
+}
+
+function hidePopover() {
+  document.getElementById('popover').style.display = 'none';
+  document.getElementById('popover-overlay').style.display = 'none';
+}
+
 async function loadWeek(weekStart) {
   currentWeek = weekStart;
   document.getElementById('week-label').textContent = `${weekStart} 周`;
@@ -35,9 +65,9 @@ async function loadWeek(weekStart) {
       `<td><strong>${esc(p.name)}</strong><br><span style="font-size:12px;color:#888">${esc(p.platform)}/${esc(p.owner)}/${esc(p.repo)}</span></td>` +
       `<td><span class="expand-btn" data-project="${esc(p.name)}">${p.commitCount} &#9660;</span></td>` +
       `<td>${p.topAuthors.length}</td>` +
-      `<td>${p.target ? esc(p.target.goal) : '<span style="color:#999">&mdash;</span>'}</td>` +
-      `<td style="font-size:13px">${p.target?.overallProgress || '<span style="color:#999">&mdash;</span>'}</td>` +
-      `<td style="font-size:13px">${p.thisWeekDescription || (p.commitCount === 0 ? '<span style="color:#999">暂无活动</span>' : '<span style="color:#999">&mdash;</span>')}</td>`;
+      `<td class="target-cell">${p.target ? esc(p.target.goal) : '<span style="color:#999">&mdash;</span>'}</td>` +
+      `<td class="progress-cell">${makeProgressCell(p.target?.overallProgress, '&mdash;')}</td>` +
+      `<td class="progress-cell">${makeProgressCell(p.thisWeekDescription, p.commitCount === 0 ? '暂无活动' : '&mdash;')}</td>`;
 
     const detailTr = document.createElement('tr');
     detailTr.className = 'commit-detail';
@@ -62,6 +92,18 @@ async function loadWeek(weekStart) {
     });
   });
 }
+
+// Popover handlers
+document.getElementById('project-rows').addEventListener('click', (e) => {
+  const cell = e.target.closest('.progress-cell');
+  if (cell) showPopover(cell);
+});
+
+document.getElementById('popover-close').addEventListener('click', hidePopover);
+document.getElementById('popover-overlay').addEventListener('click', hidePopover);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') hidePopover();
+});
 
 document.getElementById('ask-btn').addEventListener('click', async () => {
   const input = document.getElementById('question-input');
@@ -118,6 +160,15 @@ document.getElementById('date-picker').addEventListener('change', (e) => {
 function esc(s) {
   if (!s) return '';
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function renderMd(text) {
+  if (!text) return '';
+  try {
+    return marked.parse(text);
+  } catch {
+    return esc(text);
+  }
 }
 
 loadWeeks();

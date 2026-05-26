@@ -78,12 +78,20 @@ async function collectProjectCommits(project, weekStart, weekEnd) {
       // Skip diff for initial commits or merge commits
     }
 
+    let diff = '';
+    try {
+      diff = await localGit.show([commit.hash, '--format=']);
+    } catch {
+      diff = '';
+    }
+
     commitMessages.push({
       hash: commit.hash.substring(0, 7),
       message: commit.message,
       author,
       date: commit.date,
       files: changedFiles,
+      diff,
     });
   }
 
@@ -108,4 +116,23 @@ async function collectProjectCommits(project, weekStart, weekEnd) {
   };
 }
 
-module.exports = { collectProjectCommits };
+async function readKeyFiles(project, filePaths) {
+  const repoDir = path.join(CACHE_DIR, project.name);
+  const files = {};
+  for (const fp of filePaths) {
+    const fullPath = path.join(repoDir, fp);
+    try {
+      if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
+        const content = fs.readFileSync(fullPath, 'utf-8');
+        files[fp] = content.length > 8000
+          ? content.substring(0, 8000) + '\n... [truncated]'
+          : content;
+      }
+    } catch {
+      files[fp] = '[unreadable]';
+    }
+  }
+  return files;
+}
+
+module.exports = { collectProjectCommits, readKeyFiles };

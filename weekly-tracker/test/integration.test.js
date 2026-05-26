@@ -115,9 +115,10 @@ describe('Express Server', () => {
 });
 
 describe('Git Collector', () => {
-  test('collectProjectCommits is a function', () => {
-    const { collectProjectCommits } = require(path.join(libDir, 'git-collector'));
-    expect(typeof collectProjectCommits).toBe('function');
+  test('exports expected functions', () => {
+    const collector = require(path.join(libDir, 'git-collector'));
+    expect(typeof collector.collectProjectCommits).toBe('function');
+    expect(typeof collector.readKeyFiles).toBe('function');
   });
 });
 
@@ -126,7 +127,8 @@ describe('LLM Module', () => {
     const llm = require(path.join(libDir, 'llm'));
     expect(typeof llm.generateWeeklySummary).toBe('function');
     expect(typeof llm.askQuestion).toBe('function');
-    expect(typeof llm.generateProgressDescription).toBe('function');
+    expect(typeof llm.generateWeeklyProgressDescription).toBe('function');
+    expect(typeof llm.synthesizeWithFiles).toBe('function');
     expect(typeof llm.generateOverallProgress).toBe('function');
   });
 });

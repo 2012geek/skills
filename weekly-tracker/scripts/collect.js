@@ -6,8 +6,8 @@ const path = require('path');
 const libDir = path.join(__dirname, '..', 'lib');
 const { getDb, upsertProject, getActiveProjects, upsertWeeklyReport, upsertProjectTarget, getWeeklyReports, getWeekSummaryStats } = require(path.join(libDir, 'db'));
 const { loadConfig, getWeekRange } = require(path.join(libDir, 'config'));
-const { collectProjectCommits } = require(path.join(libDir, 'git-collector'));
-const { generateWeeklySummary, generateProgressDescription, generateOverallProgress } = require(path.join(libDir, 'llm'));
+const { collectProjectCommits, readKeyFiles } = require(path.join(libDir, 'git-collector'));
+const { generateWeeklySummary, generateWeeklyProgressDescription, synthesizeWithFiles, generateOverallProgress } = require(path.join(libDir, 'llm'));
 
 const args = process.argv.slice(2);
 const summaryOnly = args.includes('--summary-only');
@@ -49,8 +49,21 @@ async function main() {
 
       data.projectId = project.id;
 
+      let fileContents = {};
+
       if (data.commitMessages.length > 0) {
-        data.thisWeekDescription = await generateProgressDescription(data.commitMessages, project.name, target);
+        // Stage 1: Analyze diffs
+        const stage1Result = await generateWeeklyProgressDescription(project.name, target, data.commitMessages);
+
+        if (typeof stage1Result === 'string') {
+          // Fallback: stage 1 returned formatted text directly (no files to read)
+          data.thisWeekDescription = stage1Result;
+        } else if (stage1Result && stage1Result.filesToRead) {
+          // Stage 2: Read key files and synthesize
+          fileContents = await readKeyFiles(project, stage1Result.filesToRead);
+          data.thisWeekDescription = await synthesizeWithFiles(project.name, target, stage1Result.stage1, fileContents);
+        }
+
         console.log(`    ✓ ${data.commitCount} commits, ${data.filesChanged} files changed`);
       } else {
         console.log(`    - No commits this week`);
@@ -59,14 +72,14 @@ async function main() {
       upsertWeeklyReport(data);
       reports.push({ ...data, project_name: project.name, platform: project.platform });
 
-      // Update overall progress
+      // Update overall progress (now re-synthesized, not appended)
       if (target) {
         const overall = await generateOverallProgress(
-          target.overall_progress || null,
-          data.thisWeekDescription || '',
-          data.commitCount,
           project.name,
-          target
+          target,
+          data.thisWeekDescription || '',
+          data.commitMessages,
+          fileContents
         );
         if (overall) {
           db.prepare('UPDATE project_targets SET overall_progress = ? WHERE id = ?').run(overall, target.id);

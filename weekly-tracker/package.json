@@ -10,9 +10,10 @@
     "test": "jest"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.0",
     "better-sqlite3": "^11.0.0",
     "express": "^4.21.0",
-    "simple-git": "^3.25.0",
-    "@anthropic-ai/sdk": "^0.32.0"
+    "marked": "^18.0.4",
+    "simple-git": "^3.25.0"
   }
 }
