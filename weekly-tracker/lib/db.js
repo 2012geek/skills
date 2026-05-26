@@ -176,13 +176,6 @@ function getTargetForProject(projectId) {
   return db.prepare('SELECT * FROM project_targets WHERE project_id = ? AND active = 1').get(projectId);
 }
 
-function getCachedAnswer(weekStart, question) {
-  return db.prepare('SELECT * FROM qa_cache WHERE week_start = ? AND question = ?').get(weekStart, question);
-}
-
-function cacheAnswer(weekStart, question, answer) {
-  db.prepare('INSERT OR REPLACE INTO qa_cache (week_start, question, answer) VALUES (?, ?, ?)').run(weekStart, question, answer);
-}
 
 function getLastAnalyzedSha(projectId) {
   const row = db.prepare('SELECT last_analyzed_sha FROM projects WHERE id = ?').get(projectId);
@@ -206,6 +199,112 @@ function getWeekSummaryStats(weekStart) {
   `).get(weekStart);
 }
 
+function getProjectsRangeData(from, to) {
+  const rows = db.prepare(`
+    SELECT wr.week_start, wr.commit_count, wr.files_changed, wr.additions,
+           wr.deletions, wr.top_authors, wr.commit_messages,
+           p.id as project_id, p.name as project_name, p.platform, p.owner, p.repo
+    FROM weekly_reports wr
+    JOIN projects p ON wr.project_id = p.id
+    WHERE p.active = 1
+      AND wr.week_start >= ?
+      AND wr.week_start <= ?
+    ORDER BY p.name ASC, wr.week_start ASC
+  `).all(from, to);
+
+  // Group by project
+  const projectMap = new Map();
+  const weekSet = new Set();
+
+  for (const row of rows) {
+    weekSet.add(row.week_start);
+    if (!projectMap.has(row.project_name)) {
+      projectMap.set(row.project_name, {
+        name: row.project_name,
+        platform: row.platform,
+        owner: row.owner,
+        repo: row.repo,
+        project_id: row.project_id,
+        weeks: {},
+        allAuthors: new Set(),
+      });
+    }
+    const proj = projectMap.get(row.project_name);
+    proj.weeks[row.week_start] = {
+      commitCount: row.commit_count,
+      filesChanged: row.files_changed,
+      additions: row.additions,
+      deletions: row.deletions,
+    };
+    const authors = JSON.parse(row.top_authors || '[]');
+    for (const a of authors) proj.allAuthors.add(a.name || a);
+  }
+
+  const weekLabels = Array.from(weekSet).sort();
+
+  const projects = [];
+  for (const proj of projectMap.values()) {
+    const target = getTargetForProject(proj.project_id);
+    const weeklyActivity = weekLabels.map(
+      (w) => (proj.weeks[w] ? proj.weeks[w].commitCount : 0)
+    );
+    projects.push({
+      name: proj.name,
+      platform: proj.platform,
+      owner: proj.owner,
+      repo: proj.repo,
+      target: target
+        ? { goal: target.target, description: target.description, overallProgress: target.overall_progress }
+        : null,
+      totalCommits: weeklyActivity.reduce((a, b) => a + b, 0),
+      contributors: Array.from(proj.allAuthors),
+      weeklyActivity,
+    });
+  }
+
+  return { projects, weekLabels };
+}
+
+function getProjectTimeline(name, from, to) {
+  const project = db.prepare('SELECT * FROM projects WHERE name = ?').get(name);
+  if (!project) return null;
+
+  const target = getTargetForProject(project.id);
+
+  const weeks = db.prepare(`
+    SELECT * FROM weekly_reports
+    WHERE project_id = ? AND week_start >= ? AND week_start <= ?
+    ORDER BY week_start DESC
+  `).all(project.id, from, to);
+
+  return {
+    project: {
+      name: project.name,
+      platform: project.platform,
+      owner: project.owner,
+      repo: project.repo,
+    },
+    target: target
+      ? { goal: target.target, description: target.description, setAt: target.set_at, overallProgress: target.overall_progress }
+      : null,
+    weeks: weeks.map((w) => ({
+      weekStart: w.week_start,
+      weekEnd: w.week_end,
+      commitCount: w.commit_count,
+      filesChanged: w.files_changed,
+      additions: w.additions,
+      deletions: w.deletions,
+      topAuthors: JSON.parse(w.top_authors || '[]'),
+      commitMessages: (() => {
+        const msgs = JSON.parse(w.commit_messages || '[]');
+        return msgs.map(({ diff, files, ...rest }) => rest);
+      })(),
+      thisWeekDescription: w.this_week_description,
+      summary: w.summary,
+    })),
+  };
+}
+
 module.exports = {
   getDb,
   upsertProject,
@@ -217,9 +316,9 @@ module.exports = {
   getWeekReportForProject,
   upsertProjectTarget,
   getTargetForProject,
-  getCachedAnswer,
-  cacheAnswer,
   getWeekSummaryStats,
   getLastAnalyzedSha,
   setLastAnalyzedSha,
+  getProjectsRangeData,
+  getProjectTimeline,
 };
