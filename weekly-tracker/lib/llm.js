@@ -50,23 +50,6 @@ async function generateWeeklySummary(reports, projectTargets) {
   return getTextContent(msg.content);
 }
 
-async function askQuestion(question, weekData) {
-  const claude = getClient();
-  if (!claude) return '问答功能不可用（未配置凭证）。';
-
-  const msg = await claude.messages.create({
-    model: getModel(),
-    max_tokens: 1024,
-    system: '你是一个项目分析师。仅使用提供的 git commit 数据和变更文件信息回答问题。根据每个 commit 的变更文件路径和改动量推断实际修改内容。如果数据中不包含答案，请说明。引用具体的 commit（hash 和作者）来支撑回答。保持简洁。请用中文回答。',
-    messages: [{
-      role: 'user',
-      content: `本周 git commit 数据（含变更文件）：\n${JSON.stringify(weekData, null, 2)}\n\n问题：${question}`,
-    }],
-  });
-
-  return getTextContent(msg.content);
-}
-
 
 async function generateWeeklyProgressDescription(projectName, target, commitMessages) {
   const claude = getClient();
@@ -280,4 +263,4 @@ async function generateBaselineProgress(projectName, target, fileContents) {
   return getTextContent(msg.content);
 }
 
-module.exports = { generateWeeklySummary, askQuestion, generateWeeklyProgressDescription, synthesizeWithFiles, generateOverallProgress, generateBaselineProgress };
+module.exports = { generateWeeklySummary, generateWeeklyProgressDescription, synthesizeWithFiles, generateOverallProgress, generateBaselineProgress };
