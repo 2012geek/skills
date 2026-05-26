@@ -5,7 +5,7 @@ const os = require('os');
 
 const CACHE_DIR = path.join(os.tmpdir(), 'weekly-tracker-cache');
 
-async function collectProjectCommits(project, weekStart, weekEnd) {
+async function collectProjectCommits(project, weekStart, weekEnd, options = {}) {
   const repoDir = path.join(CACHE_DIR, project.name);
   const git = simpleGit();
 
@@ -29,11 +29,14 @@ async function collectProjectCommits(project, weekStart, weekEnd) {
 
   const localGit = simpleGit(repoDir);
 
-  const logResult = await localGit.log([
-    '--after', weekStart,
-    '--before', weekEnd,
-    '--no-merges',
-  ]);
+  const logArgs = ['--no-merges'];
+  if (options.shaAfter) {
+    logArgs.push(`${options.shaAfter}..HEAD`);
+  } else {
+    logArgs.push('--after', weekStart);
+    logArgs.push('--before', weekEnd);
+  }
+  const logResult = await localGit.log(logArgs);
 
   const commits = logResult.all || [];
 
@@ -135,4 +138,18 @@ async function readKeyFiles(project, filePaths) {
   return files;
 }
 
-module.exports = { collectProjectCommits, readKeyFiles };
+async function getHeadSha(project) {
+  const repoDir = path.join(CACHE_DIR, project.name);
+  const localGit = simpleGit(repoDir);
+  const log = await localGit.log(['-1', '--format=%H']);
+  return log.latest?.hash || null;
+}
+
+async function getFirstCommitDate(project) {
+  const repoDir = path.join(CACHE_DIR, project.name);
+  const localGit = simpleGit(repoDir);
+  const log = await localGit.log(['--reverse', '--format=%ai', '-1']);
+  return log.latest?.date || null;
+}
+
+module.exports = { collectProjectCommits, readKeyFiles, getHeadSha, getFirstCommitDate };

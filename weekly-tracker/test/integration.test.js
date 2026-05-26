@@ -129,6 +129,8 @@ describe('Git Collector', () => {
     const collector = require(path.join(libDir, 'git-collector'));
     expect(typeof collector.collectProjectCommits).toBe('function');
     expect(typeof collector.readKeyFiles).toBe('function');
+    expect(typeof collector.getHeadSha).toBe('function');
+    expect(typeof collector.getFirstCommitDate).toBe('function');
   });
 });
 
