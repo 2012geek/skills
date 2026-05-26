@@ -29,6 +29,9 @@ build/
 .slidev-temp/
 *.slidev-temp*.md
 
+# Git worktrees
+.worktrees/
+
 # SQLite runtime files
 *.db-shm
 *.db-wal
