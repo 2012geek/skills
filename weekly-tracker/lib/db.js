@@ -25,8 +25,14 @@ function initSchema() {
       repo TEXT NOT NULL,
       clone_url TEXT,
       default_branch TEXT DEFAULT 'main',
+      last_analyzed_sha TEXT,
       active INTEGER DEFAULT 1
     );
+
+    `);
+    try { db.exec('ALTER TABLE projects ADD COLUMN last_analyzed_sha TEXT'); } catch {}
+
+    db.exec(`
 
     CREATE TABLE IF NOT EXISTS weekly_reports (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -178,6 +184,15 @@ function cacheAnswer(weekStart, question, answer) {
   db.prepare('INSERT OR REPLACE INTO qa_cache (week_start, question, answer) VALUES (?, ?, ?)').run(weekStart, question, answer);
 }
 
+function getLastAnalyzedSha(projectId) {
+  const row = db.prepare('SELECT last_analyzed_sha FROM projects WHERE id = ?').get(projectId);
+  return row?.last_analyzed_sha || null;
+}
+
+function setLastAnalyzedSha(projectId, sha) {
+  db.prepare('UPDATE projects SET last_analyzed_sha = ? WHERE id = ?').run(sha, projectId);
+}
+
 function getWeekSummaryStats(weekStart) {
   return db.prepare(`
     SELECT
@@ -205,4 +220,6 @@ module.exports = {
   getCachedAnswer,
   cacheAnswer,
   getWeekSummaryStats,
+  getLastAnalyzedSha,
+  setLastAnalyzedSha,
 };

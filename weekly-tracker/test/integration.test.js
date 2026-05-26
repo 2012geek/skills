@@ -87,6 +87,16 @@ describe('Database Layer', () => {
     expect(stats.total_commits).toBe(5);
   });
 
+  test('getLastAnalyzedSha and setLastAnalyzedSha work', () => {
+    const p = db.getProjectByName('test-project');
+    expect(typeof db.getLastAnalyzedSha).toBe('function');
+    expect(typeof db.setLastAnalyzedSha).toBe('function');
+    db.setLastAnalyzedSha(p.id, 'abc123def456');
+    expect(db.getLastAnalyzedSha(p.id)).toBe('abc123def456');
+    db.setLastAnalyzedSha(p.id, null);
+    expect(db.getLastAnalyzedSha(p.id)).toBeNull();
+  });
+
   test('cacheAnswer and getCachedAnswer work', () => {
     db.cacheAnswer('2026-05-19', 'test question', 'test answer');
     const cached = db.getCachedAnswer('2026-05-19', 'test question');
