@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         GLM Coding Pro Sniper
 // @namespace    glm-coding-sniper
-// @version      2.1.0
-// @description  Auto-purchase GLM Coding Pro subscription — JSON.parse patching / preview+check dual validation / 3-phase retry / error dialog recovery / payment dialog detection / scheduled trigger
+// @version      3.0.1
+// @description  Auto-purchase GLM Coding Pro subscription — concurrent racing / non-blocking validation / adaptive retry / connection pre-warming / error dialog recovery
 // @author       Claude
 // @match        https://bigmodel.cn/glm-coding*
 // @match        https://www.bigmodel.cn/*
@@ -30,19 +30,29 @@
     PREVIEW_API: '/api/biz/pay/preview',
     CHECK_API: '/api/biz/pay/check',
 
-    // Retry engine
-    BURST_COUNT: 40,
-    BURST_DELAY: 20,
-    REGULAR_DELAY: 80,
+    // Concurrent racing
+    CONCURRENT_REQUESTS: 6, // fire N requests simultaneously
+
+    // Retry engine (adaptive)
+    BURST_COUNT: 80,
+    BURST_DELAY: 10,
+    REGULAR_DELAY: 50,
     BACKOFF_DELAY: 160,
-    MAX_RETRIES: 1600,
+    MAX_RETRIES: 3000,
 
     // Cache
-    CACHE_TTL: 12000,
-    CACHE_REPLAY_COUNT: 2,
+    CACHE_TTL: 30000,
+    CACHE_REPLAY_COUNT: 5,
+
+    // Recovery
+    MAX_RECOVERY_ATTEMPTS: 10,
+
+    // Connection pre-warming
+    WARMUP_INTERVAL: 15000, // pre-warm every 15s during low_freq
 
     // UI
     UI_THROTTLE: 500,
+    UI_BURST_THROTTLE: 2000, // less frequent during burst
   };
 
   const CYCLE_ALIASES = {
@@ -79,6 +89,9 @@
 
   let stopRequested = false;
   let activeRetryJob = null;
+  let warmupTimer = null;
+  let lastUIRefresh = 0;
+  let adaptiveDelay = CONFIG.BURST_DELAY;
 
   // ============================================================
   // NATIVE REFERENCES (save before any patching)
@@ -129,6 +142,14 @@
     const m = Math.floor((total % 3600) / 60);
     const s = total % 60;
     return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+  }
+
+  function throttledRefresh() {
+    var now = Date.now();
+    var throttle = STATE.phase === 'retrying' ? CONFIG.UI_BURST_THROTTLE : CONFIG.UI_THROTTLE;
+    if (now - lastUIRefresh < throttle) return;
+    lastUIRefresh = now;
+    refreshStatusPanel();
   }
 
   // ============================================================
@@ -218,8 +239,98 @@
   }
 
   // ============================================================
-  // 4. 3-PHASE RETRY ENGINE (from GLM Coding Rush)
+  // 4. CONNECTION PRE-WARMING
   // ============================================================
+  async function warmupConnection() {
+    try {
+      var url = location.origin + CONFIG.PREVIEW_API;
+      await nativeFetch(url, {
+        method: 'OPTIONS',
+        credentials: 'include',
+        mode: 'cors',
+      });
+      log('Connection pre-warmed');
+    } catch (_) {
+      // OPTIONS may fail, that's fine — the TCP/TLS connection is established
+    }
+  }
+
+  function startWarmup() {
+    warmupConnection();
+    warmupTimer = setInterval(warmupConnection, CONFIG.WARMUP_INTERVAL);
+  }
+
+  function stopWarmup() {
+    if (warmupTimer) { clearInterval(warmupTimer); warmupTimer = null; }
+  }
+
+  // ============================================================
+  // 5. BIZID BACKGROUND VALIDATION (non-blocking)
+  // ============================================================
+  async function validateBizId(bizId, attemptNum) {
+    try {
+      var checkUrl = location.origin + CONFIG.CHECK_API + '?bizId=' + bizId;
+      var checkResp = await nativeFetch(checkUrl, { credentials: 'include' });
+      var checkText = await checkResp.text();
+      var checkData;
+      try { checkData = nativeJSONParse(checkText); } catch (_) { checkData = null; }
+
+      if (checkData && checkData.data === 'EXPIRE') {
+        log('#' + attemptNum + ' bizId expired (bg validation)');
+        return false;
+      }
+      if (!checkData || (checkData.code && checkData.code !== 200)) {
+        log('#' + attemptNum + ' check failed code=' + (checkData && checkData.code) + ' (bg)');
+        return false;
+      }
+
+      // Valid order confirmed!
+      STATE.phase = 'success';
+      STATE.bizId = bizId;
+      log('SUCCESS! bizId=' + bizId + ' validated (attempt ' + attemptNum + ')');
+      throttledRefresh();
+
+      setTimeout(function () {
+        if (!isPaymentDialogVisible()) autoRecover(true);
+      }, 900);
+
+      return true;
+    } catch (err) {
+      log('bg validation error: ' + err.message);
+      return false;
+    }
+  }
+
+  // ============================================================
+  // 6. CONCURRENT RETRY ENGINE
+  // ============================================================
+  function singleAttempt(url, opts, attemptNum) {
+    var cleanOpts = Object.assign({}, opts);
+    delete cleanOpts.signal;
+    return nativeFetch(url, Object.assign({}, cleanOpts, { credentials: 'include' }))
+      .then(function (resp) {
+        return resp.text().then(function (text) {
+          var data;
+          try { data = nativeJSONParse(text); } catch (_) { data = null; }
+
+          if (data && data.code === 200 && data.data && data.data.bizId) {
+            return { ok: true, text: text, data: data, status: resp.status, bizId: data.data.bizId, attempt: attemptNum };
+          }
+
+          var isRateLimit = data && data.code === 555;
+          var reason = !data ? 'non-JSON'
+            : isRateLimit ? 'rate-limited'
+            : (data.data && data.data.bizId === null) ? 'sold-out'
+            : 'code=' + data.code;
+
+          return { ok: false, reason: reason, isRateLimit: isRateLimit, attempt: attemptNum };
+        });
+      })
+      .catch(function (err) {
+        return { ok: false, reason: 'network: ' + err.message, isRateLimit: false, attempt: attemptNum };
+      });
+  }
+
   async function executeRetry(url, opts) {
     if (activeRetryJob) {
       log('Retry already running, merging...');
@@ -230,90 +341,99 @@
     activeRetryJob = (async () => {
       STATE.phase = 'retrying';
       STATE.retryCount = 0;
-      refreshStatusPanel();
+      adaptiveDelay = CONFIG.BURST_DELAY;
+      throttledRefresh();
 
-      var cleanOpts = Object.assign({}, opts);
-      delete cleanOpts.signal;
+      var pendingValidation = null;
+      var globalAttempt = 0;
+      var burstBudget = CONFIG.BURST_COUNT;
 
-      for (var i = 1; i <= CONFIG.MAX_RETRIES; i++) {
+      while (globalAttempt < CONFIG.MAX_RETRIES) {
         if (stopRequested) { log('Stopped by user'); break; }
-        STATE.retryCount = i;
-        refreshStatusPanel();
 
-        try {
-          var resp = await nativeFetch(url, Object.assign({}, cleanOpts, { credentials: 'include' }));
-          var text = await resp.text();
-          var data;
-          try { data = nativeJSONParse(text); } catch (_) { data = null; }
+        // If a previous validation succeeded, we're done
+        if (STATE.phase === 'success') {
+          return { ok: true, text: STATE.lastSuccess.text, data: STATE.lastSuccess.data, status: 200 };
+        }
 
-          // Success: got a valid bizId
-          if (data && data.code === 200 && data.data && data.data.bizId) {
-            var bizId = data.data.bizId;
-            log('Got bizId=' + bizId + ', validating via check API...');
+        // Determine concurrency and delay for this batch
+        var inBurst = globalAttempt < burstBudget;
+        var batchSize = inBurst ? CONFIG.CONCURRENT_REQUESTS : Math.max(2, Math.ceil(CONFIG.CONCURRENT_REQUESTS / 2));
 
-            // Dual validation: check the bizId
-            try {
-              var checkUrl = location.origin + CONFIG.CHECK_API + '?bizId=' + bizId;
-              var checkResp = await nativeFetch(checkUrl, { credentials: 'include' });
-              var checkText = await checkResp.text();
-              var checkData;
-              try { checkData = nativeJSONParse(checkText); } catch (_) { checkData = null; }
+        // Fire a batch of concurrent requests
+        var tasks = [];
+        for (var b = 0; b < batchSize && globalAttempt < CONFIG.MAX_RETRIES; b++) {
+          globalAttempt++;
+          STATE.retryCount = globalAttempt;
+          tasks.push(singleAttempt(url, opts, globalAttempt));
+        }
 
-              if (checkData && checkData.data === 'EXPIRE') {
-                log('#' + i + ' bizId expired, retrying...');
-                await sleep(CONFIG.REGULAR_DELAY);
-                continue;
-              }
-              if (!checkData || (checkData.code && checkData.code !== 200)) {
-                log('#' + i + ' check failed (code=' + (checkData && checkData.code) + '), retrying...');
-                await sleep(CONFIG.REGULAR_DELAY);
-                continue;
-              }
+        // Wait for all in batch to settle
+        var results = await Promise.allSettled(tasks);
 
-              // Valid order confirmed!
-              STATE.phase = 'success';
-              STATE.bizId = bizId;
-              STATE.lastSuccess = { text: text, data: data };
-              STATE.recoveryAttempts = 0;
-              log('SUCCESS! bizId=' + bizId + ' validated (attempt ' + i + ')');
-              refreshStatusPanel();
+        // Process results
+        var gotSuccess = false;
+        var hitRateLimit = false;
 
-              setTimeout(function () {
-                if (!isPaymentDialogVisible()) autoRecover(true);
-              }, 900);
+        for (var r = 0; r < results.length; r++) {
+          var outcome = results[r];
+          if (outcome.status !== 'fulfilled') continue;
+          var res = outcome.value;
 
-              return { ok: true, text: text, data: data, status: resp.status };
-            } catch (err) {
-              log('#' + i + ' check error: ' + err.message);
-              await sleep(CONFIG.REGULAR_DELAY);
-              continue;
+          if (res.ok) {
+            // Got a bizId — validate in background (non-blocking)
+            if (!pendingValidation) {
+              log('#' + res.attempt + ' Got bizId=' + res.bizId + ', validating in background...');
+              STATE.lastSuccess = { text: res.text, data: res.data };
+              primeSuccessCache({ text: res.text, data: res.data });
+
+              // Background validation — don't await
+              pendingValidation = validateBizId(res.bizId, res.attempt)
+                .then(function (valid) {
+                  if (valid) {
+                    onSuccess('api');
+                  } else {
+                    // Clear stale state if validation failed
+                    STATE.lastSuccess = null;
+                    STATE.cache = null;
+                  }
+                  pendingValidation = null;
+                });
+            }
+            gotSuccess = true;
+          } else {
+            if (res.isRateLimit) hitRateLimit = true;
+            if (res.attempt <= 5 || res.attempt % 50 === 0) {
+              log('#' + res.attempt + ' ' + res.reason);
             }
           }
-
-          // Failure analysis
-          var isRateLimit = data && data.code === 555;
-          var reason = !data ? 'non-JSON'
-            : isRateLimit ? 'rate-limited (555)'
-            : (data.data && data.data.bizId === null) ? 'sold out (bizId=null)'
-            : 'unknown (code=' + data.code + ')';
-
-          if (i <= 5 || i % 20 === 0) log('#' + i + ' ' + reason);
-
-          // 3-phase delay: burst → regular → backoff
-          var baseDelay = isRateLimit ? CONFIG.BACKOFF_DELAY
-            : i <= CONFIG.BURST_COUNT ? CONFIG.BURST_DELAY
-            : CONFIG.REGULAR_DELAY;
-          await sleep(baseDelay + Math.floor(Math.random() * baseDelay * 0.3));
-        } catch (err) {
-          if (i <= 3 || i % 20 === 0) log('#' + i + ' network error: ' + err.message);
-          var d = i <= CONFIG.BURST_COUNT ? CONFIG.BURST_DELAY : CONFIG.REGULAR_DELAY;
-          await sleep(d + Math.floor(Math.random() * d * 0.3));
         }
+
+        throttledRefresh();
+
+        // If we got a success, keep polling at regular speed until validation completes
+        if (gotSuccess) {
+          await sleep(CONFIG.REGULAR_DELAY);
+          continue;
+        }
+
+        // Adaptive delay (only after burst phase)
+        if (!inBurst) {
+          if (hitRateLimit) {
+            adaptiveDelay = Math.min(adaptiveDelay * 1.5, 500);
+          } else if (adaptiveDelay > CONFIG.BURST_DELAY) {
+            adaptiveDelay = Math.max(adaptiveDelay * 0.85, CONFIG.BURST_DELAY);
+          }
+        }
+
+        var baseDelay = inBurst ? CONFIG.BURST_DELAY : adaptiveDelay;
+        var jitter = Math.floor(Math.random() * baseDelay * 0.3);
+        await sleep(baseDelay + jitter);
       }
 
       STATE.phase = stopRequested ? 'idle' : 'failed';
       if (!stopRequested) log('FAILED: reached max retries (' + CONFIG.MAX_RETRIES + ')');
-      refreshStatusPanel();
+      throttledRefresh();
       return { ok: false };
     })();
 
@@ -322,7 +442,7 @@
   }
 
   // ============================================================
-  // 5. FETCH INTERCEPTOR (targeted preview/check interception)
+  // 7. FETCH INTERCEPTOR
   // ============================================================
   window.fetch = async function (input, init) {
     var url = typeof input === 'string' ? input : (input && input.url) ? input.url : String(input);
@@ -337,7 +457,7 @@
       };
       STATE.lastCaptureAt = Date.now();
       log('Captured preview request (Fetch)');
-      refreshStatusPanel();
+      throttledRefresh();
 
       // Check cache first
       var cached = consumeSuccessCache();
@@ -374,7 +494,7 @@
   };
 
   // ============================================================
-  // 6. XHR INTERCEPTOR
+  // 8. XHR INTERCEPTOR
   // ============================================================
   XMLHttpRequest.prototype.open = function (method, url) {
     this._sniperMethod = method;
@@ -413,7 +533,7 @@
       };
       STATE.lastCaptureAt = Date.now();
       log('Captured preview request (XHR)');
-      refreshStatusPanel();
+      throttledRefresh();
 
       var cached = consumeSuccessCache();
       if (cached) {
@@ -462,7 +582,7 @@
   }
 
   // ============================================================
-  // 7. PAYMENT DIALOG DETECTION (GLM-specific)
+  // 9. PAYMENT DIALOG DETECTION (GLM-specific)
   // ============================================================
   var GLM_PAY_SELECTORS = '.white-mask-bg .pay-dialog, .white-mask-bg .scan-code-box, .confirm-pay-btn, .scan-qrcode-box';
   var PAYMENT_KEYWORDS = /二维码|扫码|支付|QRCode|qrcode|微信|支付宝|付款|wechat|alipay/i;
@@ -486,7 +606,7 @@
   }
 
   // ============================================================
-  // 8. ERROR DIALOG AUTO-RECOVERY
+  // 10. ERROR DIALOG AUTO-RECOVERY
   // ============================================================
   var ERROR_KEYWORDS = /购买人数过多|系统繁忙|稍后再试|请重试|繁忙|失败|出错|异常/;
 
@@ -539,7 +659,7 @@
   }
 
   async function autoRecover(force) {
-    if (STATE.isRecovering || STATE.recoveryAttempts >= 3 || !STATE.lastSuccess) return;
+    if (STATE.isRecovering || STATE.recoveryAttempts >= CONFIG.MAX_RECOVERY_ATTEMPTS || !STATE.lastSuccess) return;
     if (isPaymentDialogVisible()) { log('Payment dialog visible, skip recovery'); return; }
     var dialog = findErrorDialog();
     if (!dialog && !force) return;
@@ -552,15 +672,15 @@
       primeSuccessCache(STATE.lastSuccess);
       if (dialog) {
         dismissDialog(dialog);
-        await sleep(320);
+        await sleep(200);
         if (isPaymentDialogVisible()) return;
         var still = findErrorDialog();
-        if (still) { dismissDialog(still); await sleep(180); }
+        if (still) { dismissDialog(still); await sleep(100); }
       }
       if (isPaymentDialogVisible()) return;
       var triggered = await triggerBuyButton('auto-recovery');
       if (!triggered) {
-        log('Recovery: no button found, please click manually!');
+        log('Recovery: no button found, click manually!');
       }
     } finally {
       STATE.isRecovering = false;
@@ -571,7 +691,7 @@
   var SOLD_OUT_TEXT_RE = /售罄|缺货|已抢完|敬请期待|sold\s*out|out\s*of\s*stock|coming\s*soon/i;
 
   // ============================================================
-  // 9. AUTO-NAVIGATION: plan card & billing cycle selection
+  // 11. AUTO-NAVIGATION: plan card & billing cycle selection
   // ============================================================
   var lastCycleSwitchAt = 0;
 
@@ -666,7 +786,7 @@
   }
 
   // ============================================================
-  // 10. BUTTON MANIPULATION
+  // 12. BUTTON MANIPULATION (optimized — faster clicks)
   // ============================================================
 
   function isVisible(el) {
@@ -759,8 +879,7 @@
 
     var btn = findBuyButton();
     if (!btn) {
-      // Retry after cycle switch settles
-      await sleep(140);
+      await sleep(80);
       btn = findBuyButton();
     }
     if (!btn) return false;
@@ -780,18 +899,16 @@
     try { btn.scrollIntoView({ block: 'center', inline: 'center', behavior: 'auto' }); } catch (_) {}
 
     try {
+      // Fire gesture + click simultaneously for speed
       dispatchBuyGesture(btn);
-      await sleep(60);
-      if (STATE.lastCaptureAt > prevCaptureAt || isPaymentDialogVisible()) {
-        log(reason + ': button triggered successfully');
-        return true;
-      }
       btn.click();
-      await sleep(90);
+      await sleep(30); // minimal wait
+
       var triggered = STATE.lastCaptureAt > prevCaptureAt || isPaymentDialogVisible();
       if (!triggered) {
+        // One retry with gesture only
         dispatchBuyGesture(btn);
-        await sleep(70);
+        await sleep(30);
         triggered = STATE.lastCaptureAt > prevCaptureAt || isPaymentDialogVisible();
       }
       log(triggered ? reason + ': click succeeded' : reason + ': click sent but no preview captured');
@@ -802,7 +919,7 @@
   }
 
   // ============================================================
-  // 10. PROACTIVE PURCHASE (API direct call)
+  // 13. PROACTIVE PURCHASE (API direct call)
   // ============================================================
   async function startProactive() {
     if (!STATE.captured) {
@@ -814,7 +931,7 @@
         return;
       }
       // Wait for interception to capture the request
-      await sleep(200);
+      await sleep(100);
       if (!STATE.captured) {
         log('Request still not captured after auto-click');
         return;
@@ -828,14 +945,14 @@
       primeSuccessCache(result);
       log('Proactive purchase succeeded! Triggering payment flow...');
       var errDlg = findErrorDialog();
-      if (errDlg) { dismissDialog(errDlg); await sleep(300); }
+      if (errDlg) { dismissDialog(errDlg); await sleep(200); }
       var triggered = await triggerBuyButton('proactive');
       if (!triggered) log('Payment dialog not detected, please click manually');
     }
   }
 
   // ============================================================
-  // 11. SCHEDULED TRIGGER (from our original design)
+  // 14. SCHEDULED TRIGGER
   // ============================================================
   function getScheduleTickDelay(remainingMs) {
     if (remainingMs > 60000) return 1000;
@@ -871,6 +988,7 @@
         updateOverlay('stopped', 'TIMEOUT - purchase manually', '#f00');
         log('TIMEOUT: window ended');
         stopPolling();
+        stopWarmup();
         return;
       }
 
@@ -880,6 +998,7 @@
         updateOverlay('ready', 'Low-freq polling (1s)', '#ff0');
         log('Phase: LOW FREQ polling started');
         setPollInterval(1000);
+        startWarmup(); // begin connection pre-warming
       }
 
       // Phase: low_freq → high_freq
@@ -887,6 +1006,7 @@
         STATE.phase = 'high_freq';
         updateOverlay('ready', 'HIGH-FREQ polling', '#ff0');
         log('Phase: HIGH FREQ polling started');
+        stopWarmup(); // stop warming, go live
         setPollInterval(CONFIG.BURST_DELAY);
       }
 
@@ -905,7 +1025,7 @@
   }
 
   // ============================================================
-  // 12. POLLING (for backward compatibility with UI-only mode)
+  // 15. POLLING
   // ============================================================
   async function pollOnce() {
     if (STATE.isPurchased) { stopPolling(); return; }
@@ -930,13 +1050,14 @@
   }
 
   // ============================================================
-  // 13. SUCCESS HANDLER
+  // 16. SUCCESS HANDLER
   // ============================================================
   function onSuccess(channel) {
     if (STATE.isPurchased) return;
     STATE.isPurchased = true;
     STATE.phase = 'success';
     stopPolling();
+    stopWarmup();
     if (STATE.tickTimer) { clearTimeout(STATE.tickTimer); STATE.tickTimer = null; }
     updateOverlay(channel, 'PURCHASE SUCCESS!', '#0f0');
     log('========== SUCCESS via ' + channel + ' ==========');
@@ -964,14 +1085,14 @@
   }
 
   // ============================================================
-  // 14. UI OVERLAY
+  // 17. UI OVERLAY
   // ============================================================
   function createOverlay() {
     var el = document.createElement('div');
     el.id = 'glm-sniper-overlay';
     el.innerHTML =
       '<div id="sniper-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
-        '<span style="font-weight:bold;color:#0f0;">GLM Sniper v2.1</span>' +
+        '<span style="font-weight:bold;color:#0f0;">GLM Sniper v3.0.1</span>' +
         '<div style="display:flex;gap:4px;">' +
           '<button id="sniper-rush" style="background:#e74c3c;border:none;color:#fff;cursor:pointer;padding:2px 8px;border-radius:3px;font-size:10px;font-weight:bold;">RUSH NOW</button>' +
           '<button id="sniper-toggle" style="background:none;border:1px solid #0f0;color:#0f0;cursor:pointer;padding:0 6px;font-size:11px;">_</button>' +
@@ -1039,9 +1160,9 @@
     if (planEl) planEl.textContent = 'Target: ' + CONFIG.TARGET_PLAN + ' ' + cycleLabel;
 
     if (STATE.phase === 'retrying') {
-      statusEl.textContent = 'Retrying... ' + STATE.retryCount + '/' + CONFIG.MAX_RETRIES;
+      statusEl.textContent = 'Retrying... ' + STATE.retryCount + '/' + CONFIG.MAX_RETRIES + ' (x' + CONFIG.CONCURRENT_REQUESTS + ')';
       statusEl.style.color = '#fa0';
-      if (captureEl) captureEl.textContent = 'Channel: api (retrying)';
+      if (captureEl) captureEl.textContent = 'Channel: api (concurrent)';
     } else if (STATE.phase === 'success') {
       statusEl.textContent = 'SUCCESS! bizId=' + STATE.bizId;
       statusEl.style.color = '#0f0';
@@ -1069,11 +1190,11 @@
   }
 
   // ============================================================
-  // 15. DIALOG WATCHER
+  // 18. DIALOG WATCHER
   // ============================================================
   function startDialogWatcher() {
     setInterval(function () {
-      if (STATE.lastSuccess && !STATE.isRecovering && STATE.recoveryAttempts < 3) {
+      if (STATE.lastSuccess && !STATE.isRecovering && STATE.recoveryAttempts < CONFIG.MAX_RECOVERY_ATTEMPTS) {
         if (!isPaymentDialogVisible() && findErrorDialog()) {
           autoRecover();
         }
@@ -1081,7 +1202,7 @@
     }, 250);
 
     var observer = new MutationObserver(function () {
-      if (STATE.lastSuccess && !STATE.isRecovering && STATE.recoveryAttempts < 3) {
+      if (STATE.lastSuccess && !STATE.isRecovering && STATE.recoveryAttempts < CONFIG.MAX_RECOVERY_ATTEMPTS) {
         if (!isPaymentDialogVisible() && findErrorDialog()) {
           autoRecover();
         }
@@ -1091,7 +1212,7 @@
   }
 
   // ============================================================
-  // 16. INIT
+  // 19. INIT
   // ============================================================
   function init() {
     if (document.readyState === 'loading') {
@@ -1106,9 +1227,9 @@
     startScheduler();
     startDialogWatcher();
 
-    log('Sniper v2.1 initialized');
+    log('Sniper v3.0.1 initialized');
     log('Target: ' + CONFIG.TARGET_PLAN + ' ' + (CYCLE_ALIASES[CONFIG.BILLING_CYCLE] || [])[0] + ' @ ' + CONFIG.TARGET_TIME);
-    log('Strategy: auto-nav + API interception + 3-phase retry + error recovery');
+    log('Strategy: concurrent x' + CONFIG.CONCURRENT_REQUESTS + ' + adaptive retry + bg validation + pre-warming');
   }
 
   init();
