@@ -100,6 +100,7 @@ async function collectProjectCommits(project, weekStart, weekEnd, options = {}) 
     let diff = '';
     try {
       diff = await localGit.show([commit.hash, '--format=']);
+      if (diff.length > 3000) diff = diff.substring(0, 3000) + '\n... [truncated]';
     } catch {
       diff = '';
     }
@@ -164,8 +165,15 @@ async function getHeadSha(project) {
 async function getFirstCommitDate(project) {
   const repoDir = path.join(CACHE_DIR, project.name);
   const localGit = simpleGit(repoDir);
-  const log = await localGit.log(['--reverse', '--format=%ai', '-1']);
-  return log.latest?.date || null;
+  try {
+    const rootHash = await localGit.raw(['rev-list', '--max-parents=0', 'HEAD']);
+    const hash = rootHash.trim().split('\n')[0];
+    if (!hash) return null;
+    const log = await localGit.log(['-1', hash]);
+    return log.latest?.date || null;
+  } catch {
+    return null;
+  }
 }
 
 module.exports = { ensureRepo, collectProjectCommits, readKeyFiles, getHeadSha, getFirstCommitDate };

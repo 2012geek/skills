@@ -143,11 +143,6 @@ async function main() {
     // Get first commit date for backfill range
     const firstCommitDate = await getFirstCommitDate(project);
     let firstDate = firstCommitDate ? new Date(firstCommitDate) : new Date();
-    // Cap at 6 months back
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-    if (firstDate > sixMonthsAgo) firstDate = sixMonthsAgo;
-
     const ranges = generateWeekRanges(firstDate, weekEnd);
     const pastRanges = ranges.filter((r) => r.weekStart !== weekStart);
 
@@ -156,6 +151,7 @@ async function main() {
       const data = await collectProjectCommits(project, range.weekStart, range.weekEnd);
       if (!data) continue;
       data.projectId = project.id;
+      data.commitMessages = data.commitMessages.map(({ diff, ...rest }) => rest);
       upsertWeeklyReport(data);
     }
 
@@ -272,6 +268,7 @@ async function main() {
       console.log(`    - No commits this week`);
     }
 
+    data.commitMessages = data.commitMessages.map(({ diff, ...rest }) => rest);
     upsertWeeklyReport(data);
     pushReport(data, project);
 
