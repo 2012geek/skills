@@ -70,6 +70,7 @@ function renderOverview(data) {
         <span class="project-repo">${esc(p.platform)}/${esc(p.owner)}/${esc(p.repo)}</span>
       </div>` +
       `<div class="col-contributors">${p.contributors.map(c => `<span class="contributor-tag">${esc(c)}</span>`).join(' ')}</div>` +
+      `<div class="col-description">${p.target && p.target.goal ? esc(p.target.goal) : '<span class="muted">—</span>'}</div>` +
       `<div class="col-activity">
         <div class="activity-bars">
           ${p.weeklyActivity.map(count => {
