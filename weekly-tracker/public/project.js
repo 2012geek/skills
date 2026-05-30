@@ -4,6 +4,17 @@ let currentFrom = '';
 let currentTo = '';
 let projectName = '';
 
+function getRepoUrl(platform, owner, repo) {
+  const hosts = {
+    github: 'https://github.com',
+    gitlab: 'https://gitlab.com',
+    atomicgit: 'https://atomicgit.com',
+  };
+  const host = hosts[platform] || `https://${platform}.com`;
+  if (platform === 'gitlab') return `${host}/${owner}/${repo}`;
+  return `${host}/${owner}/${repo}`;
+}
+
 function show(el) { el.style.display = ''; }
 function hide(el) { el.style.display = 'none'; }
 
@@ -154,17 +165,20 @@ function renderDetail(data) {
       `<div class="week-header" id="${headerId}" data-target="${bodyId}">
         <span class="week-toggle">&#9654;</span>
         <span class="week-range">${w.weekStart} ~ ${w.weekEnd}</span>
+        <span class="week-authors">${(w.topAuthors || []).map(a => esc(a.name || a)).join(', ')}</span>
         <span class="week-stats">${w.commitCount} 提交 · ${w.filesChanged} 文件 · +${w.additions}/-${w.deletions}</span>
       </div>` +
       `<div class="week-body" id="${bodyId}" style="display:none">
         <div class="week-commits">
-          ${(w.commitMessages || []).map(c =>
-            `<div class="commit-item">
-              <code class="commit-hash">${esc(c.hash || '').substring(0, 7)}</code>
+          ${(w.commitMessages || []).map(c => {
+            const shortHash = esc(c.hash || '').substring(0, 7);
+            const commitUrl = getRepoUrl(p.platform, p.owner, p.repo) + '/commit/' + esc(c.hash || '');
+            return `<div class="commit-item">
+              <a href="${commitUrl}" target="_blank" class="commit-hash-link"><code class="commit-hash">${shortHash}</code></a>
               <span class="commit-msg">${esc(c.message || '')}</span>
               <span class="commit-author">(${esc(c.author || '')})</span>
-            </div>`
-          ).join('') || '<span class="muted">暂无提交</span>'}
+            </div>`;
+          }).join('') || '<span class="muted">暂无提交</span>'}
         </div>
         <div class="week-description">
           ${w.commitCount === 0

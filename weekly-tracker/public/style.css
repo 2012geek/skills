@@ -67,11 +67,14 @@ header h1 { font-size: 22px; }
 .week-header:hover { background: #f1f5f9; }
 .week-toggle { font-size: 10px; color: #94a3b8; width: 12px; }
 .week-range { font-weight: 600; font-size: 13px; min-width: 200px; }
+.week-authors { font-size: 12px; color: #2563eb; min-width: 80px; }
 .week-stats { font-size: 12px; color: #888; }
 
 .week-body { padding: 12px 14px; border-top: 1px solid #e2e8f0; }
 .week-commits { margin-bottom: 10px; }
 .commit-item { font-size: 12px; padding: 3px 0; line-height: 1.5; }
+.commit-hash-link { text-decoration: none; }
+.commit-hash-link:hover .commit-hash { text-decoration: underline; }
 .commit-hash { font-family: monospace; color: #2563eb; font-size: 11px; margin-right: 6px; }
 .commit-msg { color: #333; }
 .commit-author { color: #888; font-size: 11px; }
