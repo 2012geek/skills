@@ -72,11 +72,81 @@ async function repairProject(projectName) {
   return true;
 }
 
+function isEnglishDescription(desc) {
+  if (!desc) return false;
+  const lines = desc.split('\n').filter(l => l.startsWith('- '));
+  if (lines.length === 0) return false;
+  let asciiChars = 0;
+  let totalChars = 0;
+  for (const line of lines) {
+    // Strip file paths (common pattern: words with / or . extensions)
+    const cleaned = line.replace(/[\w/._-]+\.[\w]+/g, '').replace(/`[^`]+`/g, '');
+    for (const ch of cleaned) {
+      if (/[a-zA-Z]/.test(ch)) asciiChars++;
+      if (/\S/.test(ch)) totalChars++;
+    }
+  }
+  return totalChars > 0 && (asciiChars / totalChars) > 0.6;
+}
+
+async function fixLanguage(projectName, dryRun) {
+  const db = getDb();
+  const project = getProjectByName(projectName);
+  if (!project) {
+    console.error(`Project "${projectName}" not found`);
+    return false;
+  }
+
+  const target = db.prepare('SELECT * FROM project_targets WHERE project_id = ? AND active = 1').get(project.id);
+
+  const weeks = db.prepare(`
+    SELECT * FROM weekly_reports
+    WHERE project_id = ? AND commit_count > 0 AND this_week_description IS NOT NULL AND this_week_description != ''
+    ORDER BY week_start ASC
+  `).all(project.id);
+
+  const englishWeeks = weeks.filter(w => isEnglishDescription(w.this_week_description));
+  if (englishWeeks.length === 0) {
+    console.log(`  ${projectName}: no English descriptions found`);
+    return true;
+  }
+
+  console.log(`  ${projectName}: ${englishWeeks.length} weeks with English descriptions`);
+  for (const w of englishWeeks) {
+    console.log(`    ${w.week_start}: ${w.commit_count} commits`);
+  }
+
+  if (dryRun) return true;
+
+  const repoReady = await ensureRepo(project);
+  if (!repoReady) {
+    console.error(`  ${projectName}: repo unreachable, skipping`);
+    return false;
+  }
+
+  let fixed = 0;
+  for (const week of englishWeeks) {
+    const data = await collectProjectCommits(project, week.week_start, week.week_end);
+    if (!data || data.commitCount === 0) continue;
+
+    data.projectId = project.id;
+    data.thisWeekDescription = await generateDescription(project, target, data.commitMessages, false);
+    data.commitMessages = data.commitMessages.map(({ diff, ...rest }) => rest);
+    upsertWeeklyReport(data);
+    fixed++;
+    console.log(`    ${week.week_start}: regenerated (${data.commitCount} commits)`);
+  }
+
+  console.log(`  ${projectName}: fixed ${fixed}/${englishWeeks.length}`);
+  return true;
+}
+
 async function main() {
   const db = getDb();
 
   const args = process.argv.slice(2);
   const dryRun = args.includes('--dry-run');
+  const fixLang = args.includes('--fix-language');
 
   let projectName = null;
   for (const arg of args) {
@@ -84,6 +154,20 @@ async function main() {
       projectName = arg;
       break;
     }
+  }
+
+  if (fixLang) {
+    if (projectName) {
+      console.log(`\nFix language: ${projectName}`);
+      await fixLanguage(projectName, dryRun);
+    } else {
+      const projects = db.prepare('SELECT name FROM projects WHERE active = 1').all();
+      console.log(`\nFix language: scanning ${projects.length} projects`);
+      for (const p of projects) {
+        await fixLanguage(p.name, dryRun);
+      }
+    }
+    return;
   }
 
   if (projectName) {

@@ -82,7 +82,9 @@ async function generateWeeklyProgressDescription(projectName, target, commitMess
   "completed": ["已完成项1 引用文件路径", "已完成项2 ..."],
   "in_progress": ["进行中项1 引用文件路径 大致完成度%", "进行中项2 ..."],
   "files_to_read": ["path/to/file1.ts", "path/to/file2.ts"]
-}`,
+}
+
+重要：completed 和 in_progress 数组中的每一项必须用中文描述功能，只保留代码符号、文件路径和技术术语的英文。`,
     messages: [{
       role: 'user',
       content: `项目：${projectName}\n目标：${target?.goal || '无'}\n\n本周 commit diff：\n\n${diffsText}`,
