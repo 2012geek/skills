@@ -263,4 +263,4 @@ async function generateBaselineProgress(projectName, target, fileContents) {
   return getTextContent(msg.content);
 }
 
-module.exports = { generateWeeklySummary, generateWeeklyProgressDescription, synthesizeWithFiles, generateOverallProgress, generateBaselineProgress };
+module.exports = { generateWeeklySummary, generateWeeklyProgressDescription, synthesizeWithFiles, generateOverallProgress, generateBaselineProgress, formatWeeklyDescription };

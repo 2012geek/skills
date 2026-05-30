@@ -9,7 +9,7 @@ const libDir = path.join(__dirname, '..', 'lib');
 const { getDb, upsertProject, getActiveProjects, upsertWeeklyReport, upsertProjectTarget, getWeeklyReports, getWeekSummaryStats } = require(path.join(libDir, 'db'));
 const { loadConfig, getWeekRange } = require(path.join(libDir, 'config'));
 const { ensureRepo, collectProjectCommits, readKeyFiles, getHeadSha, getFirstCommitDate } = require(path.join(libDir, 'git-collector'));
-const { generateWeeklySummary, generateWeeklyProgressDescription, synthesizeWithFiles, generateOverallProgress, generateBaselineProgress } = require(path.join(libDir, 'llm'));
+const { generateWeeklySummary, generateWeeklyProgressDescription, synthesizeWithFiles, generateOverallProgress, generateBaselineProgress, formatWeeklyDescription } = require(path.join(libDir, 'llm'));
 
 const args = process.argv.slice(2);
 const summaryOnly = args.includes('--summary-only');
@@ -146,17 +146,25 @@ async function main() {
     const ranges = generateWeekRanges(firstDate, weekEnd);
     const pastRanges = ranges.filter((r) => r.weekStart !== weekStart);
 
-    // Backfill past weeks (commit metadata only, no LLM)
+    // Backfill past weeks with LLM descriptions
+    let backfilled = 0;
     for (const range of pastRanges) {
       const data = await collectProjectCommits(project, range.weekStart, range.weekEnd);
       if (!data) continue;
       data.projectId = project.id;
+
+      if (data.commitCount > 0) {
+        data.thisWeekDescription = await generateWeekDescription(project, target, data.commitMessages, { readFiles: false });
+      }
+
       data.commitMessages = data.commitMessages.map(({ diff, ...rest }) => rest);
       upsertWeeklyReport(data);
+      backfilled++;
+      console.log(`    Backfilled ${range.weekStart} (${data.commitCount} commits)`);
     }
 
-    if (pastRanges.length > 0) {
-      console.log(`    Backfilled ${pastRanges.length} historical weeks`);
+    if (backfilled > 0) {
+      console.log(`    Backfilled ${backfilled} historical weeks`);
     }
 
     // Generate baseline overall_progress from current codebase state
@@ -171,14 +179,31 @@ async function main() {
       }
     }
 
-    // Process current week with full LLM pipeline
-    await processWeeklyReport(project, target, weekStart, weekEnd);
+    // Process current week with full LLM pipeline (skip overall — baseline already set)
+    await processWeeklyReport(project, target, weekStart, weekEnd, { skipOverall: true });
 
     // Save checkpoint
     const headSha = await getHeadSha(project);
     if (headSha) {
       db.prepare('UPDATE projects SET last_analyzed_sha = ? WHERE id = ?').run(headSha, project.id);
     }
+  }
+
+  // Shared: generate a weekly description from commit messages
+  // readFiles=false for past weeks (current files don't reflect past state)
+  async function generateWeekDescription(project, target, commitMessages, options = {}) {
+    const stage1Result = await generateWeeklyProgressDescription(project.name, target, commitMessages);
+
+    if (typeof stage1Result === 'string') {
+      return stage1Result;
+    }
+
+    if (stage1Result && stage1Result.filesToRead && options.readFiles !== false) {
+      const fileContents = await readKeyFiles(project, stage1Result.filesToRead);
+      return await synthesizeWithFiles(project.name, target, stage1Result.stage1, fileContents);
+    }
+
+    return formatWeeklyDescription(stage1Result.stage1, commitMessages.length);
   }
 
   // === INCREMENTAL FLOW ===
@@ -200,24 +225,16 @@ async function main() {
     console.log(`    ${data.commitCount} new commits since ${lastSha.substring(0, 7)}`);
 
     data.projectId = project.id;
-    let fileContents = {};
 
     if (data.commitMessages.length > 0) {
-      const stage1Result = await generateWeeklyProgressDescription(project.name, target, data.commitMessages);
-
-      if (typeof stage1Result === 'string') {
-        data.thisWeekDescription = stage1Result;
-      } else if (stage1Result && stage1Result.filesToRead) {
-        fileContents = await readKeyFiles(project, stage1Result.filesToRead);
-        data.thisWeekDescription = await synthesizeWithFiles(project.name, target, stage1Result.stage1, fileContents);
-      }
+      data.thisWeekDescription = await generateWeekDescription(project, target, data.commitMessages, { readFiles: true });
     }
 
     upsertWeeklyReport(data);
     pushReport(data, project);
 
     if (target) {
-      const overall = await generateOverallProgress(project.name, target, data.thisWeekDescription || '', data.commitMessages, fileContents);
+      const overall = await generateOverallProgress(project.name, target, data.thisWeekDescription || '', data.commitMessages, {});
       if (overall) {
         db.prepare('UPDATE project_targets SET overall_progress = ? WHERE id = ?').run(overall, target.id);
       }
@@ -242,7 +259,7 @@ async function main() {
   }
 
   // === Shared: process current week with full LLM pipeline ===
-  async function processWeeklyReport(project, target, weekStart, weekEnd) {
+  async function processWeeklyReport(project, target, weekStart, weekEnd, options = {}) {
     const data = await collectProjectCommits(project, weekStart, weekEnd);
     if (!data) {
       console.log(`    ⚠ ${project.name}: unreachable, skipping`);
@@ -251,18 +268,8 @@ async function main() {
 
     data.projectId = project.id;
 
-    let fileContents = {};
-
     if (data.commitMessages.length > 0) {
-      const stage1Result = await generateWeeklyProgressDescription(project.name, target, data.commitMessages);
-
-      if (typeof stage1Result === 'string') {
-        data.thisWeekDescription = stage1Result;
-      } else if (stage1Result && stage1Result.filesToRead) {
-        fileContents = await readKeyFiles(project, stage1Result.filesToRead);
-        data.thisWeekDescription = await synthesizeWithFiles(project.name, target, stage1Result.stage1, fileContents);
-      }
-
+      data.thisWeekDescription = await generateWeekDescription(project, target, data.commitMessages, { readFiles: true });
       console.log(`    ✓ ${data.commitCount} commits, ${data.filesChanged} files changed`);
     } else {
       console.log(`    - No commits this week`);
@@ -272,13 +279,13 @@ async function main() {
     upsertWeeklyReport(data);
     pushReport(data, project);
 
-    if (target) {
+    if (target && !options.skipOverall) {
       const overall = await generateOverallProgress(
         project.name,
         target,
         data.thisWeekDescription || '',
         data.commitMessages,
-        fileContents
+        {}  // fileContents not available here; overall progress uses description + db state
       );
       if (overall) {
         db.prepare('UPDATE project_targets SET overall_progress = ? WHERE id = ?').run(overall, target.id);

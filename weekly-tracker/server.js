@@ -24,7 +24,7 @@ app.get('/api/week/:date', (req, res) => {
         additions: r.additions,
         deletions: r.deletions,
         topAuthors: JSON.parse(r.top_authors || '[]'),
-        commitMessages: JSON.parse(r.commit_messages || '[]'),
+        commitMessages: JSON.parse(r.commit_messages || '[]').map(({ diff, files, ...rest }) => rest),
         summary: r.summary,
         thisWeekDescription: r.this_week_description,
         target: target ? {
