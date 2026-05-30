@@ -74,8 +74,16 @@ async function loadDetail(name, from, to) {
 function renderDetail(data) {
   const p = data.project;
   document.getElementById('project-name').textContent = p.name;
-  document.getElementById('project-repo').textContent = `${p.platform}/${p.owner}/${p.repo}`;
+  const repoEl = document.getElementById('project-repo');
+  repoEl.innerHTML = `<a href="${getRepoUrl(p.platform, p.owner, p.repo)}" target="_blank">${esc(p.platform)}/${esc(p.owner)}/${esc(p.repo)}</a>`;
   document.title = `${p.name} - 项目时间线`;
+
+  const descEl = document.getElementById('project-description');
+  if (data.target && data.target.goal) {
+    descEl.textContent = data.target.goal;
+  } else {
+    descEl.textContent = '';
+  }
 
   // Target card
   if (data.target) {

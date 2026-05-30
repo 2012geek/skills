@@ -29,6 +29,8 @@ header h1 { font-size: 22px; }
 
 .col-project strong { display: block; font-size: 14px; margin-bottom: 2px; }
 .project-repo { font-size: 11px; color: #888; }
+.project-repo a { color: #888; text-decoration: none; }
+.project-repo a:hover { color: #2563eb; text-decoration: underline; }
 
 .col-contributors { display: flex; flex-wrap: wrap; gap: 4px; }
 .contributor-tag { display: inline-block; background: #e8f0fe; color: #2563eb; padding: 2px 8px; border-radius: 10px; font-size: 12px; }
@@ -41,6 +43,7 @@ header h1 { font-size: 22px; }
 /* Detail page */
 .project-info { margin-bottom: 16px; }
 .project-info h2 { font-size: 22px; display: inline; margin-right: 12px; }
+.project-description { font-size: 14px; color: #64748b; margin-top: 6px; }
 
 .target-card { background: #fff; padding: 16px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px; }
 .target-goal { font-size: 15px; font-weight: 600; color: #1e293b; }
