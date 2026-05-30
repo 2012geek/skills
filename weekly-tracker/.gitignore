@@ -1,4 +1,3 @@
 node_modules/
 weekly.db
-config.json
 *.log

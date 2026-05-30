@@ -1,0 +1,41 @@
+{
+  "projects": [
+    {
+      "name": "agent-robot",
+      "platform": "github",
+      "owner": "2012geek",
+      "repo": "agent-robot",
+      "cloneUrl": "git@github.com:2012geek/agent-robot.git"
+    },
+    {
+      "name": "agent-chiplet-offload",
+      "platform": "github",
+      "owner": "2012geek",
+      "repo": "agent-chiplet-offload",
+      "cloneUrl": "git@github.com:2012geek/agent-chiplet-offload.git"
+    },
+    {
+      "name": "verituna",
+      "platform": "github",
+      "owner": "2012geek",
+      "repo": "verituna",
+      "cloneUrl": "git@github.com:2012geek/verituna.git"
+    },
+    {
+      "name": "agent-d3a",
+      "platform": "github",
+      "owner": "2012geek",
+      "repo": "agent-d3a",
+      "cloneUrl": "git@github.com:2012geek/agent-d3a.git"
+    }
+  ],
+  "platforms": {
+    "github": {
+      "tokenEnv": "GITHUB_TOKEN"
+    }
+  },
+  "server": {
+    "port": 3456,
+    "host": "0.0.0.0"
+  }
+}

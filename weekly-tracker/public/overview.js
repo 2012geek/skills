@@ -54,8 +54,6 @@ async function loadOverview(from, to) {
 }
 
 function renderOverview(data) {
-  const maxCommits = Math.max(1, ...data.projects.map(p => Math.max(...p.weeklyActivity, 0)));
-
   const rows = document.getElementById('overview-rows');
   rows.innerHTML = '';
 
@@ -63,6 +61,7 @@ function renderOverview(data) {
     const row = document.createElement('a');
     row.className = 'overview-row';
     row.href = `/project.html?name=${encodeURIComponent(p.name)}&from=${currentFrom}&to=${currentTo}`;
+    const projMax = Math.max(1, ...p.weeklyActivity);
 
     row.innerHTML =
       `<div class="col-project">
@@ -74,7 +73,7 @@ function renderOverview(data) {
       `<div class="col-activity">
         <div class="activity-bars">
           ${p.weeklyActivity.map(count => {
-            const height = maxCommits > 0 ? Math.max(2, (count / maxCommits) * 40) : 2;
+            const height = Math.max(2, (count / projMax) * 40);
             return `<span class="bar" style="height:${height}px" title="${count} commits"></span>`;
           }).join('')}
         </div>
