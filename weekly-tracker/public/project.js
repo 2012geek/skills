@@ -66,9 +66,9 @@ async function loadDetail(name, from, to) {
 
 function renderDetail(data) {
   const p = data.project;
-  document.getElementById('project-name').textContent = p.name;
-  const repoEl = document.getElementById('project-repo');
-  repoEl.innerHTML = `<a href="${getRepoUrl(p.platform, p.owner, p.repo)}" target="_blank">${esc(p.platform)}/${esc(p.owner)}/${esc(p.repo)}</a>`;
+  document.getElementById('header-project-name').textContent = p.name;
+  document.getElementById('header-project-repo').innerHTML =
+    `<a href="${getRepoUrl(p.platform, p.owner, p.repo)}" target="_blank">${esc(p.platform)}/${esc(p.owner)}/${esc(p.repo)}</a>`;
   document.title = `${p.name} - 项目概览`;
 
   const descEl = document.getElementById('project-description');

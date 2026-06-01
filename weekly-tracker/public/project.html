@@ -11,7 +11,10 @@
   <div class="container">
     <header>
       <a href="/" class="back-link">&larr; 返回总览</a>
-      <h1>项目概览</h1>
+      <div class="header-title">
+        <h1 id="header-project-name"></h1>
+        <span class="header-repo" id="header-project-repo"></span>
+      </div>
     </header>
 
     <div id="loading" class="loading">加载中...</div>
@@ -20,8 +23,6 @@
 
     <div id="detail" style="display:none">
       <div class="project-info">
-        <h2 id="project-name"></h2>
-        <span class="project-repo" id="project-repo"></span>
         <p class="project-description" id="project-description"></p>
       </div>
 

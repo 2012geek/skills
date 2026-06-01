@@ -10,6 +10,12 @@ header h1 { font-size: 22px; }
 .back-link { text-decoration: none; color: #2563eb; font-size: 14px; position: absolute; left: 0; }
 .back-link:hover { text-decoration: underline; }
 
+.header-title { text-align: center; }
+.header-title h1 { font-size: 22px; }
+.header-repo { font-size: 13px; color: #888; }
+.header-repo a { color: #888; text-decoration: none; }
+.header-repo a:hover { color: #2563eb; text-decoration: underline; }
+
 /* Loading / Error / Empty */
 .loading { text-align: center; padding: 60px 20px; color: #888; font-size: 15px; }
 .error-banner { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; }
