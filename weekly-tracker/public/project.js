@@ -1,7 +1,5 @@
 let commitChart = null;
 let trendChart = null;
-let currentFrom = '';
-let currentTo = '';
 let projectName = '';
 
 function getRepoUrl(platform, owner, repo) {
@@ -27,17 +25,8 @@ function getParams() {
   };
 }
 
-function getDefaultRange() {
-  const to = new Date();
-  const from = new Date();
-  from.setMonth(from.getMonth() - 3);
-  return { from: from.toISOString().split('T')[0], to: to.toISOString().split('T')[0] };
-}
-
 async function loadDetail(name, from, to) {
   projectName = name;
-  currentFrom = from;
-  currentTo = to;
 
   hide(document.getElementById('detail'));
   hide(document.getElementById('error'));
@@ -45,9 +34,13 @@ async function loadDetail(name, from, to) {
   show(document.getElementById('loading'));
 
   try {
-    const res = await fetch(
-      `/api/project/${encodeURIComponent(name)}/timeline?from=${from}&to=${to}`
-    );
+    let url = `/api/project/${encodeURIComponent(name)}/timeline`;
+    const params = [];
+    if (from) params.push(`from=${from}`);
+    if (to) params.push(`to=${to}`);
+    if (params.length) url += '?' + params.join('&');
+
+    const res = await fetch(url);
     if (!res.ok) {
       if (res.status === 404) throw new Error('项目未找到');
       throw new Error(`HTTP ${res.status}`);
@@ -66,7 +59,7 @@ async function loadDetail(name, from, to) {
   } catch (err) {
     hide(document.getElementById('loading'));
     const errEl = document.getElementById('error');
-    errEl.innerHTML = `加载失败: ${esc(err.message)} <button onclick="loadDetail(projectName, currentFrom, currentTo)">重试</button>`;
+    errEl.innerHTML = `加载失败: ${esc(err.message)} <button onclick="loadDetail(projectName)">重试</button>`;
     show(errEl);
   }
 }
@@ -76,14 +69,10 @@ function renderDetail(data) {
   document.getElementById('project-name').textContent = p.name;
   const repoEl = document.getElementById('project-repo');
   repoEl.innerHTML = `<a href="${getRepoUrl(p.platform, p.owner, p.repo)}" target="_blank">${esc(p.platform)}/${esc(p.owner)}/${esc(p.repo)}</a>`;
-  document.title = `${p.name} - 项目时间线`;
+  document.title = `${p.name} - 项目概览`;
 
   const descEl = document.getElementById('project-description');
-  if (data.target && data.target.goal) {
-    descEl.textContent = data.target.goal;
-  } else {
-    descEl.textContent = '';
-  }
+  descEl.textContent = '';
 
   // Target card
   if (data.target) {
@@ -102,6 +91,11 @@ function renderDetail(data) {
   // Charts - weeks are newest first from API, reverse for chronological charts
   const weeks = [...data.weeks].reverse();
   const labels = weeks.map(w => w.weekStart);
+
+  // Show date range in chart subtitles
+  const dateRange = weeks.length > 0 ? `(${weeks[0].weekStart} ~ ${weeks[weeks.length - 1].weekEnd})` : '';
+  document.getElementById('commit-chart-range').textContent = dateRange;
+  document.getElementById('trend-chart-range').textContent = dateRange;
 
   // Commit chart
   const ctx1 = document.getElementById('commit-chart').getContext('2d');
@@ -235,20 +229,10 @@ function renderMd(text) {
 
 document.addEventListener('DOMContentLoaded', () => {
   const params = getParams();
-  const range = getDefaultRange();
-  document.getElementById('date-from').value = params.from || range.from;
-  document.getElementById('date-to').value = params.to || range.to;
 
   if (params.name) {
-    loadDetail(params.name, document.getElementById('date-from').value, document.getElementById('date-to').value);
+    loadDetail(params.name, params.from || '', params.to || '');
   } else {
     window.location.href = '/';
-    return;
   }
-
-  document.getElementById('apply-dates').addEventListener('click', () => {
-    const from = document.getElementById('date-from').value;
-    const to = document.getElementById('date-to').value;
-    window.location.search = `?name=${encodeURIComponent(params.name)}&from=${from}&to=${to}`;
-  });
 });

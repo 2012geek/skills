@@ -200,17 +200,30 @@ function getWeekSummaryStats(weekStart) {
 }
 
 function getProjectsRangeData(from, to) {
-  const rows = db.prepare(`
-    SELECT wr.week_start, wr.commit_count, wr.files_changed, wr.additions,
-           wr.deletions, wr.top_authors, wr.commit_messages,
-           p.id as project_id, p.name as project_name, p.platform, p.owner, p.repo
-    FROM weekly_reports wr
-    JOIN projects p ON wr.project_id = p.id
-    WHERE p.active = 1
-      AND wr.week_start >= ?
-      AND wr.week_start <= ?
-    ORDER BY p.name ASC, wr.week_start ASC
-  `).all(from, to);
+  let rows;
+  if (from && to) {
+    rows = db.prepare(`
+      SELECT wr.week_start, wr.commit_count, wr.files_changed, wr.additions,
+             wr.deletions, wr.top_authors, wr.commit_messages,
+             p.id as project_id, p.name as project_name, p.platform, p.owner, p.repo
+      FROM weekly_reports wr
+      JOIN projects p ON wr.project_id = p.id
+      WHERE p.active = 1
+        AND wr.week_start >= ?
+        AND wr.week_start <= ?
+      ORDER BY p.name ASC, wr.week_start ASC
+    `).all(from, to);
+  } else {
+    rows = db.prepare(`
+      SELECT wr.week_start, wr.commit_count, wr.files_changed, wr.additions,
+             wr.deletions, wr.top_authors, wr.commit_messages,
+             p.id as project_id, p.name as project_name, p.platform, p.owner, p.repo
+      FROM weekly_reports wr
+      JOIN projects p ON wr.project_id = p.id
+      WHERE p.active = 1
+      ORDER BY p.name ASC, wr.week_start ASC
+    `).all();
+  }
 
   // Group by project
   const projectMap = new Map();
@@ -271,11 +284,20 @@ function getProjectTimeline(name, from, to) {
 
   const target = getTargetForProject(project.id);
 
-  const weeks = db.prepare(`
-    SELECT * FROM weekly_reports
-    WHERE project_id = ? AND week_start >= ? AND week_start <= ?
-    ORDER BY week_start DESC
-  `).all(project.id, from, to);
+  let weeks;
+  if (from && to) {
+    weeks = db.prepare(`
+      SELECT * FROM weekly_reports
+      WHERE project_id = ? AND week_start >= ? AND week_start <= ?
+      ORDER BY week_start DESC
+    `).all(project.id, from, to);
+  } else {
+    weeks = db.prepare(`
+      SELECT * FROM weekly_reports
+      WHERE project_id = ?
+      ORDER BY week_start DESC
+    `).all(project.id);
+  }
 
   return {
     project: {

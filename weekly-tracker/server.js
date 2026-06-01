@@ -54,10 +54,7 @@ app.get('/api/weeks', (_req, res) => {
 app.get('/api/weeks/range', (req, res) => {
   try {
     const { from, to } = req.query;
-    if (!from || !to) {
-      return res.status(400).json({ error: 'from and to query params are required' });
-    }
-    const data = getProjectsRangeData(from, to);
+    const data = getProjectsRangeData(from || null, to || null);
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -67,10 +64,7 @@ app.get('/api/weeks/range', (req, res) => {
 app.get('/api/project/:name/timeline', (req, res) => {
   try {
     const { from, to } = req.query;
-    if (!from || !to) {
-      return res.status(400).json({ error: 'from and to query params are required' });
-    }
-    const data = getProjectTimeline(req.params.name, from, to);
+    const data = getProjectTimeline(req.params.name, from || null, to || null);
     if (!data) {
       return res.status(404).json({ error: 'Project not found' });
     }

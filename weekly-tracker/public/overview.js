@@ -1,23 +1,7 @@
-let currentFrom = '';
-let currentTo = '';
-
-function getDefaultRange() {
-  const to = new Date();
-  const from = new Date();
-  from.setMonth(from.getMonth() - 3);
-  return {
-    from: from.toISOString().split('T')[0],
-    to: to.toISOString().split('T')[0],
-  };
-}
-
 function show(el) { el.style.display = ''; }
 function hide(el) { el.style.display = 'none'; }
 
-async function loadOverview(from, to) {
-  currentFrom = from;
-  currentTo = to;
-
+async function loadOverview() {
   hide(document.getElementById('empty'));
   hide(document.getElementById('empty-range'));
   hide(document.getElementById('error'));
@@ -25,7 +9,7 @@ async function loadOverview(from, to) {
   show(document.getElementById('loading'));
 
   try {
-    const res = await fetch(`/api/weeks/range?from=${from}&to=${to}`);
+    const res = await fetch('/api/weeks/range');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
 
@@ -48,7 +32,7 @@ async function loadOverview(from, to) {
   } catch (err) {
     hide(document.getElementById('loading'));
     const errEl = document.getElementById('error');
-    errEl.innerHTML = `加载失败: ${esc(err.message)} <button onclick="loadOverview(currentFrom, currentTo)">重试</button>`;
+    errEl.innerHTML = `加载失败: ${esc(err.message)} <button onclick="loadOverview()">重试</button>`;
     show(errEl);
   }
 }
@@ -60,7 +44,7 @@ function renderOverview(data) {
   for (const p of data.projects) {
     const row = document.createElement('a');
     row.className = 'overview-row';
-    row.href = `/project.html?name=${encodeURIComponent(p.name)}&from=${currentFrom}&to=${currentTo}`;
+    row.href = `/project.html?name=${encodeURIComponent(p.name)}`;
     const projMax = Math.max(1, ...p.weeklyActivity);
 
     row.innerHTML =
@@ -90,15 +74,5 @@ function esc(s) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  const range = getDefaultRange();
-  document.getElementById('date-from').value = range.from;
-  document.getElementById('date-to').value = range.to;
-  loadOverview(range.from, range.to);
-
-  document.getElementById('apply-dates').addEventListener('click', () => {
-    loadOverview(
-      document.getElementById('date-from').value,
-      document.getElementById('date-to').value
-    );
-  });
+  loadOverview();
 });

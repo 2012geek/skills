@@ -10,16 +10,8 @@
 <body>
   <div class="container">
     <header>
-      <div class="header-left">
-        <a href="/" class="back-link">&larr; 返回总览</a>
-        <h1>项目时间线</h1>
-      </div>
-      <div class="date-range">
-        <input type="date" id="date-from">
-        <span>—</span>
-        <input type="date" id="date-to">
-        <button id="apply-dates">应用</button>
-      </div>
+      <a href="/" class="back-link">&larr; 返回总览</a>
+      <h1>项目概览</h1>
     </header>
 
     <div id="loading" class="loading">加载中...</div>
@@ -42,11 +34,11 @@
 
       <div class="charts-grid">
         <div class="chart-container">
-          <h3>提交活动</h3>
+          <h3>提交活动 <span class="chart-date-range" id="commit-chart-range"></span></h3>
           <canvas id="commit-chart"></canvas>
         </div>
         <div class="chart-container">
-          <h3>文件 / 代码行趋势</h3>
+          <h3>文件 / 代码行趋势 <span class="chart-date-range" id="trend-chart-range"></span></h3>
           <canvas id="trend-chart"></canvas>
         </div>
       </div>
