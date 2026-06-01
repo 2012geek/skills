@@ -81,6 +81,7 @@ function renderDetail(data) {
     const progressEl = document.getElementById('target-progress');
     if (data.target.overallProgress) {
       progressEl.innerHTML = renderMd(data.target.overallProgress);
+      collapseLongLists(progressEl);
     } else {
       progressEl.innerHTML = '<span class="muted">暂无进展描述</span>';
     }
@@ -193,6 +194,11 @@ function renderDetail(data) {
     timeline.appendChild(div);
   }
 
+  // Collapse long lists in weekly descriptions
+  for (const desc of timeline.querySelectorAll('.week-description')) {
+    collapseLongLists(desc);
+  }
+
   // Accordion toggle
   timeline.addEventListener('click', (e) => {
     const header = e.target.closest('.week-header');
@@ -216,15 +222,49 @@ function esc(s) {
 
 function renderMd(text) {
   if (!text) return '';
-  return text
+  let html = text
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/^### (.+)$/gm, '<h4>$1</h4>')
+    .replace(/^#### (.+)$/gm, '<h5>$1</h5>')
+    .replace(/^### (.+)$/gm, (_, title) => {
+      let cls = '';
+      if (/已完成|完成/.test(title)) cls = ' section-done';
+      else if (/进行中|进行/.test(title)) cls = ' section-progress';
+      else if (/下一步|下一步计划/.test(title)) cls = ' section-next';
+      return `<h3 class="section-header${cls}">${title}</h3>`;
+    })
     .replace(/^## (.+)$/gm, '<h3>$1</h3>')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/^- (.+)$/gm, '<li>$1</li>')
-    .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
+    .replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>')
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\n/g, '<br>');
+
+  // Merge consecutive <ul> blocks (and remove <br> between them)
+  html = html.replace(/(<\/ul>)\s*(?:<br>\s*)?\s*(<ul>)/g, '');
+
+  return html;
+}
+
+function collapseLongLists(container) {
+  const uls = container.querySelectorAll('ul');
+  for (const ul of uls) {
+    const lis = ul.querySelectorAll('li');
+    if (lis.length <= 8) continue;
+    const hidden = [];
+    for (let i = 6; i < lis.length; i++) {
+      lis[i].style.display = 'none';
+      hidden.push(lis[i]);
+    }
+    const btn = document.createElement('button');
+    btn.className = 'collapse-toggle';
+    btn.textContent = `展开全部 (${lis.length} 条)`;
+    btn.addEventListener('click', () => {
+      const show = btn.textContent.startsWith('展开');
+      for (const li of hidden) li.style.display = show ? '' : 'none';
+      btn.textContent = show ? `收起 (${lis.length} 条)` : `展开全部 (${lis.length} 条)`;
+    });
+    ul.parentNode.insertBefore(btn, ul.nextSibling);
+  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {

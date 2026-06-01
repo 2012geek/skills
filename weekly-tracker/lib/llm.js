@@ -84,7 +84,9 @@ async function generateWeeklyProgressDescription(projectName, target, commitMess
   "files_to_read": ["path/to/file1.ts", "path/to/file2.ts"]
 }
 
-重要：completed 和 in_progress 数组中的每一项必须用中文描述功能，只保留代码符号、文件路径和技术术语的英文。`,
+重要：
+- completed 和 in_progress 数组中的每一项必须用中文描述功能，只保留代码符号、文件路径和技术术语的英文
+- 合并同类小改动，每个数组最多 10 条`,
     messages: [{
       role: 'user',
       content: `项目：${projectName}\n目标：${target?.goal || '无'}\n\n本周 commit diff：\n\n${diffsText}`,
@@ -124,11 +126,14 @@ async function synthesizeWithFiles(projectName, target, stage1Analysis, fileCont
 输出严格按以下格式（不要输出其他 markdown 标题）：
 
 ### 已完成
-- **功能名** — 具体完成了什么，引用 \`path/to/file\` 路径
+#### 主题名（将相关改动分组，每组一个子标题）
+- **功能名** — 一句话描述具体完成了什么，引用 \`path/to/file\`
 - ...
 
+（可继续添加更多 #### 主题分组）
+
 ### 进行中
-- **功能名** — 当前状态，引用路径，估算完成度百分比
+- **功能名** — 当前状态，引用路径，估算完成度%
 - ...
 
 ### 下一步
@@ -136,11 +141,12 @@ async function synthesizeWithFiles(projectName, target, stage1Analysis, fileCont
 - ...
 
 规则：
-1. "已完成"中的每一项必须有代码证据（diff 或文件内容中可见）
-2. "进行中"是已动工但明显不完整的功能
-3. "下一步"基于当前代码状态推断
-4. 每个条目引用具体文件路径
-5. 每项一行，不要过度展开`,
+1. 每个分类（已完成/进行中/下一步）总共最多 6 条，合并同类小改动
+2. "已完成"按主题用 #### 子标题分组（如 "RDMA 传输层"、"兼容层扩展"），每组 2-4 条
+3. "进行中"是已动工但明显不完整的功能
+4. "下一步"基于当前代码状态推断
+5. 每条格式：**功能名** — 一句话结论 + 引用关键文件路径，不展开实现细节
+6. 每项一行，用中文描述功能`,
     messages: [{
       role: 'user',
       content: `项目：${projectName}\n目标：${target?.goal || '无'}\n\nDiff 分析结果：\n${JSON.stringify(stage1Analysis, null, 2)}\n\n关键文件完整内容：\n\n${filesText}\n\n请生成本周进展描述。`,
@@ -187,11 +193,14 @@ async function generateOverallProgress(projectName, target, weeklyDescription, c
 输出严格按以下格式（不要输出其他 markdown 标题）：
 
 ### 已完成
-- **模块/功能名** — 具体完成了什么，引用 \`path/to/file\` 路径
+#### 主题名（将相关功能分组）
+- **功能名** — 一句话描述，引用 \`path/to/file\`
 - ...
 
+（可继续添加更多 #### 主题分组）
+
 ### 进行中
-- **模块/功能名** — 当前状态，引用路径，估算完成度百分比
+- **功能名** — 当前状态，引用路径，估算完成度%
 - ...
 
 ### 下一步
@@ -199,12 +208,12 @@ async function generateOverallProgress(projectName, target, weeklyDescription, c
 - ...
 
 规则：
-- 基于之前的整体进展与本周新进展进行综合，保留之前已完成的内容，融入本周新完成项
+- 每个分类总共最多 6 条，合并同类小改动
+- "已完成"按主题用 #### 子标题分组（如 "RDMA 传输层"、"兼容层扩展"），每组 2-4 条
+- 保留之前已完成的内容，融入本周新完成项
 - "已完成"中的每一项必须在文件内容或本周 diff 中有代码证据
-- 本周无新进展时，保持之前的整体描述不变
 - "进行中"是已动工但明显不完整的功能
-- "下一步"基于当前代码状态和项目目标推断
-- 每项一行，引用具体文件路径
+- 每条格式：**功能名** — 一句话结论 + 引用关键文件路径，不展开细节
 - 用中文回答`,
     messages: [{
       role: 'user',
@@ -239,11 +248,14 @@ async function generateBaselineProgress(projectName, target, fileContents) {
 输出严格按以下格式（不要输出其他 markdown 标题）：
 
 ### 已完成
-- **模块/功能名** — 基于代码证据描述已实现的功能，引用 \`path/to/file\` 路径
+#### 主题名（将相关功能分组）
+- **功能名** — 一句话描述已实现的功能，引用 \`path/to/file\`
 - ...
 
+（可继续添加更多 #### 主题分组）
+
 ### 进行中
-- **模块/功能名** — 基于代码证据发现未完成或进行中的功能，引用路径
+- **功能名** — 未完成或进行中的功能，引用路径
 - ...
 
 ### 下一步
@@ -252,10 +264,11 @@ async function generateBaselineProgress(projectName, target, fileContents) {
 
 规则：
 1. 只基于提供的文件内容得出结论，不要猜测
-2. "已完成"中的每一项必须有代码证据（已实现的功能、完整的模块等）
-3. "进行中"是文件内容中能看到动工但明显不完整的功能
-4. 引用具体文件路径
-5. 用中文回答`,
+2. 每个分类总共最多 6 条
+3. "已完成"按主题用 #### 子标题分组，每组 2-4 条
+4. "已完成"中的每一项必须有代码证据（已实现的功能、完整的模块等）
+5. 每条格式：**功能名** — 一句话结论 + 引用关键文件路径，不展开细节
+6. 用中文回答`,
     messages: [{
       role: 'user',
       content: `项目：${projectName}\n目标：${target?.goal || '无'}\n\n关键文件内容：\n\n${filesText}\n\n请生成初始整体进展描述。`,

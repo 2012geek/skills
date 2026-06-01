@@ -84,8 +84,29 @@ header h1 { font-size: 22px; }
 .week-description { font-size: 13px; line-height: 1.6; }
 .week-description h4 { font-size: 14px; margin: 8px 0 4px; }
 .week-description ul { padding-left: 18px; margin: 4px 0; }
-.week-description li { margin-bottom: 3px; }
-.week-description code { font-size: 11px; background: #f1f5f9; padding: 1px 4px; border-radius: 2px; }
+.week-description li { margin-bottom: 8px; }
+.week-description code { font-size: 11px; background: #eff6ff; color: #2563eb; padding: 1px 5px; border-radius: 3px; font-family: monospace; }
+.week-description strong { color: #1e293b; }
+.week-description .section-header { font-size: 14px; font-weight: 600; padding: 6px 0 4px; margin: 12px 0 6px; border-bottom: 1px solid #e2e8f0; }
+.week-description .section-header.section-done { color: #16a34a; border-color: #dcfce7; }
+.week-description .section-header.section-progress { color: #ca8a04; border-color: #fef9c3; }
+.week-description .section-header.section-next { color: #64748b; border-color: #e2e8f0; }
+.week-description h5 { font-size: 13px; font-weight: 600; color: #475569; margin: 10px 0 4px; }
+
+.collapse-toggle { display: block; margin: 8px 0 0; padding: 4px 10px; font-size: 12px; color: #2563eb; background: none; border: 1px solid #bfdbfe; border-radius: 4px; cursor: pointer; }
+.collapse-toggle:hover { background: #eff6ff; }
+
+.target-progress { font-size: 13px; line-height: 1.5; }
+.target-progress h4 { font-size: 14px; margin: 6px 0 4px; }
+.target-progress ul { padding-left: 18px; margin: 4px 0; }
+.target-progress li { margin-bottom: 8px; }
+.target-progress code { font-size: 11px; background: #eff6ff; color: #2563eb; padding: 1px 5px; border-radius: 3px; font-family: monospace; }
+.target-progress strong { color: #1e293b; }
+.target-progress .section-header { font-size: 14px; font-weight: 600; padding: 6px 0 4px; margin: 12px 0 6px; border-bottom: 1px solid #e2e8f0; }
+.target-progress .section-header.section-done { color: #16a34a; border-color: #dcfce7; }
+.target-progress .section-header.section-progress { color: #ca8a04; border-color: #fef9c3; }
+.target-progress .section-header.section-next { color: #64748b; border-color: #e2e8f0; }
+.target-progress h5 { font-size: 13px; font-weight: 600; color: #475569; margin: 10px 0 4px; }
 
 .muted { color: #999; }
 
