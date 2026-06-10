@@ -1,0 +1,14 @@
+{
+  "name": "desktop-automator",
+  "version": "1.0.0",
+  "description": "Claude Code skill for recording and replaying desktop operations with AI-powered visual recognition",
+  "scripts": {
+    "record": "python scripts/recorder.py",
+    "replay": "python scripts/player.py",
+    "list": "python scripts/task_manager.py list",
+    "test": "cd desktop-automator && python -m pytest tests/ -v"
+  },
+  "keywords": ["desktop", "automation", "rpa", "ocr", "vision"],
+  "author": "Claude Code",
+  "license": "MIT"
+}

@@ -1,0 +1,8 @@
+pyautogui>=0.9.54
+pynput>=1.7.7
+mss>=9.0.1
+Pillow>=10.0.0
+pytesseract>=0.3.10
+anthropic>=0.40.0
+opencv-python>=4.8.0
+pytest>=8.0.0

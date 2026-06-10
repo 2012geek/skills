@@ -1,0 +1,6 @@
+tasks/*/
+!tasks/.gitkeep
+__pycache__/
+*.pyc
+.pytest_cache/
+screenshots/
