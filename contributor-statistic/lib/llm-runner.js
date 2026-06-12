@@ -14,8 +14,13 @@ class LLMRunner {
     this.agentsDir = path.join(__dirname, '..', 'agents');
     this.client = null;
 
-    if (config?.anthropic?.apiKey) {
-      this.client = new Anthropic({ apiKey: config.anthropic.apiKey });
+    const apiKey = config?.anthropic?.apiKey || process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_API_KEY;
+    const baseURL = config?.anthropic?.baseURL || process.env.ANTHROPIC_BASE_URL;
+
+    if (apiKey) {
+      const clientOpts = { apiKey };
+      if (baseURL) clientOpts.baseURL = baseURL;
+      this.client = new Anthropic(clientOpts);
     }
   }
 
@@ -51,7 +56,9 @@ class LLMRunner {
       messages: [{ role: 'user', content: prompt }],
     });
 
-    return response.content[0].text;
+    const textBlock = response.content.find(b => b.type === 'text');
+    if (!textBlock) throw new Error('No text block in LLM response');
+    return textBlock.text;
   }
 
   buildPrompt(definition, context) {
@@ -63,6 +70,8 @@ class LLMRunner {
   }
 
   resolveModel(model) {
+    const envModel = process.env.ANTHROPIC_DEFAULT_SONNET_MODEL;
+    if (envModel) return envModel;
     if (model === 'inherit' || model === 'sonnet') {
       return 'claude-sonnet-4-6';
     }
@@ -70,10 +79,16 @@ class LLMRunner {
   }
 
   async judgeCommitImportance(contributor, candidateCommits, allCommits) {
+    const maxCandidates = 50;
+    const truncatedCandidates = candidateCommits.slice(0, maxCandidates).map(c => ({
+      hash: c.hash, subject: c.subject, linesAdded: c.linesAdded, linesRemoved: c.linesRemoved, files: c.files?.slice(0, 10),
+    }));
+    const truncatedAllCommits = allCommits.slice(0, 200).map(c => ({ hash: c.hash, subject: c.subject }));
+
     const result = await this.runAgent('commit-importance', {
       '贡献者': `${contributor.name} (${contributor.email})`,
-      '候选提交列表': candidateCommits,
-      '所有提交列表': allCommits.map(c => ({ hash: c.hash, subject: c.subject })),
+      '候选提交列表': truncatedCandidates,
+      '所有提交列表': truncatedAllCommits,
       '最大选择数量': this.config?.contributorStatistic?.maxImportantCommits || 5,
     });
 
@@ -93,8 +108,8 @@ class LLMRunner {
       '新增行数': contributor.totalLinesAdded,
       '删除行数': contributor.totalLinesRemoved,
       '涉及文件数': contributor.files?.length || 0,
-      '主要贡献领域': contributor.contributionAreas || [],
-      '重要提交': contributor.importantCommits || [],
+      '主要贡献领域': (contributor.contributionAreas || contributor.files?.map(f => f.split('/')[0]) || []).slice(0, 20),
+      '重要提交': (contributor.importantCommits || []).slice(0, 10),
     });
 
     return result.trim();

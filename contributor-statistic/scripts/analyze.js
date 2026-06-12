@@ -81,7 +81,9 @@ async function analyze(options) {
 
     const entry = { ...data, importantCommits: [], narrative: '' };
 
-    if (!noLLM && config.anthropic?.apiKey) {
+    const apiKey = config.anthropic?.apiKey || process.env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_API_KEY;
+
+    if (!noLLM && apiKey) {
       console.log(`🤖 分析贡献者: ${name}...`);
       const llm = new LLMRunner(config);
 
