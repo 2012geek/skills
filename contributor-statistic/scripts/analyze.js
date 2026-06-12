@@ -39,7 +39,7 @@ async function analyze(options) {
   const urlBuilder = new GitHubUrlBuilder(remoteUrl);
 
   const logArgs = buildLogArgs(options);
-  const shortlog = await git.raw(['shortlog', '-sn', ...logArgs]);
+  const shortlog = await git.raw(['shortlog', '-sne', ...logArgs]);
   const logOutput = await git.raw(['log', '--format=%H|%an|%ae|%ai|%s', ...logArgs]);
   const numstatOutput = await git.raw(['log', '--numstat', '--format=%H|%an', ...logArgs]);
 
