@@ -1,0 +1,9 @@
+{
+  "anthropic": {
+    "apiKey": ""
+  },
+  "contributorStatistic": {
+    "maxImportantCommits": 5,
+    "lineChangeThreshold": 100
+  }
+}

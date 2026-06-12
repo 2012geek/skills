@@ -1,0 +1,20 @@
+{
+  "name": "contributor-statistic",
+  "version": "1.0.0",
+  "description": "分析 GitHub 仓库贡献者活动，生成中文贡献统计报告",
+  "main": "scripts/analyze.js",
+  "scripts": {
+    "analyze": "node scripts/analyze.js",
+    "test": "jest"
+  },
+  "keywords": ["contributor", "statistics", "git", "report"],
+  "author": "Claude Code",
+  "license": "MIT",
+  "dependencies": {
+    "simple-git": "^3.27.0",
+    "@anthropic-ai/sdk": "^0.78.0"
+  },
+  "devDependencies": {
+    "jest": "^30.2.0"
+  }
+}
