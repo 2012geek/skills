@@ -14,6 +14,7 @@ This is a monorepo containing [Claude Code](https://github.com/anthropics/claude
 - `html-presentation` - Markdown to Slidev presentations with dev mode
 - `arch-diagram` - Generate architecture diagrams from codebase analysis
 - `tencent-doc-download` - Download Tencent Docs content
+- `contributor-statistic` - Analyze GitHub repo contributor activity and generate Chinese-language report.md
 
 ## Common Development Commands
 
@@ -24,6 +25,9 @@ cd gitcode-code-review && npm test
 
 # Run specific test file
 cd gitcode-code-review && npx jest tests/test-comment-formatter.test.js
+
+# Run tests for contributor-statistic skill
+cd contributor-statistic && npm test
 ```
 
 ### Building
@@ -69,6 +73,12 @@ node skills/gitcode-ci-repair/scripts/repair.js <MR_NUMBER>
 
 # Generate PR description
 node skills/gitcode-pr/scripts/generate-semantic-desc-v3.js <PR_NUMBER>
+
+# Analyze contributor statistics (local repo, no LLM)
+cd contributor-statistic && node scripts/analyze.js --repo-path /path/to/repo --no-llm
+
+# Analyze contributor statistics (remote repo with LLM)
+cd contributor-statistic && node scripts/analyze.js --repo https://github.com/org/repo
 ```
 
 ## Architecture
@@ -116,6 +126,24 @@ The `html-presentation` skill uses a Slidev-based architecture:
    - Frontmatter injection with theme configuration
    - Dev server with hot reload at `localhost:3030`
    - LLM optimization with basic/full levels
+
+### Contributor Statistic System
+
+The `contributor-statistic` skill analyzes GitHub repo contributor activity and generates Chinese-language reports:
+
+1. **Pipeline** (`contributor-statistic/scripts/`):
+   - `analyze.js` - 6-step pipeline: clone → extract → filter → LLM importance → LLM narrative → generate report
+
+2. **Core Libraries** (`contributor-statistic/lib/`):
+   - `git-analyzer.js` - Parses git shortlog/log/numstat output into structured data
+   - `commit-filter.js` - Filters commits by size threshold and groups by author
+   - `llm-runner.js` - Executes LLM agents via Anthropic SDK
+   - `report-generator.js` - Builds Chinese markdown report with summary table and profiles
+   - `github-url.js` - Constructs commit URLs from SSH/HTTPS remote URLs
+
+3. **Agent System** (`contributor-statistic/agents/`):
+   - `commit-importance.md` - Judges which commits are important per contributor
+   - `contributor-summary.md` - Writes Chinese narrative summary per contributor
 
 ## Configuration
 
