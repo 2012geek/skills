@@ -1,85 +1,94 @@
 ---
 name: desktop-automator
-description: "录制桌面操作并自动回放。支持鼠标点击、键盘输入的录制，通过本地 OCR 和远端视觉 API 识别 UI 元素进行自适应回放。跨平台支持 Linux 和 Windows。"
+description: "录制桌面操作并自动回放。V2 架构：语义录制（按键合并+语义步骤）+ Vision Provider 回放（doubao/Anthropic 视觉识别）+ computer-use 循环。支持 X11 和 Wayland。"
 license: MIT
 ---
 
-# Desktop Automator
+# Desktop Automator V2
 
-录制桌面操作并自动回放，支持 AI 视觉识别。
+LLM-driven desktop automation with semantic recording and Vision Provider replay.
 
 ## Commands
 
-### 录制桌面操作
+### Record Desktop Operations
 
 ```
 /desktop-automator record <task-name>
 ```
 
-执行以下步骤：
-1. 运行: `cd desktop-automator && python scripts/recorder.py --name <task-name>`
-2. 告知用户：录制已开始，按 Esc 键停止
-3. 录制脚本会自动捕获鼠标点击和键盘输入，每步保存截图
-4. 当脚本结束时，确认录制数据已保存
+Steps:
+1. Run: `cd desktop-automator && python3 scripts/recorder.py --name <task-name>`
+2. Inform user: recording started, press Esc to stop
+3. The recorder captures mouse clicks and keyboard input, merging consecutive keypresses into semantic steps (not raw 206 events)
+4. Each step saves a screenshot and records nearby text for later matching
+5. When the script exits, confirm saved data in `tasks/<task-name>/`
 
-### 回放录制操作
+### Replay Recorded Operations
 
 ```
 /desktop-automator replay <task-name>
 ```
 
-执行以下步骤：
-1. 运行: `cd desktop-automator && python scripts/player.py --task <task-name> --mode flexible --delay 1.0`
-2. 观察输出，每步报告执行状态
-3. 如果某步失败：
-   - 在 flexible 模式下，报告失败但继续
-   - 在 strict 模式下，停止回放
-4. 回放结束后，汇总结果
+Steps:
+1. Run: `cd desktop-automator && python3 scripts/player.py --task <task-name> --provider doubao`
+2. Observe output, report each step status
+3. Replay uses the screenshot→Vision→execute→verify loop:
+   - Take screenshot of current screen
+   - Send to Vision Provider for analysis and action decision
+   - Execute the decided action (click/type/wait)
+   - Verify result, loop to next step
+4. If a step fails:
+   - In flexible mode: report and continue
+   - In strict mode: stop replay
+5. After completion, summarize results
 
-可选参数：
-- `--mode strict|flexible` — 严格模式遇错停止，灵活模式跳过继续
-- `--delay <seconds>` — 步骤间延迟（默认 1.0 秒）
+Options:
+- `--provider doubao|anthropic` — Vision Provider (default: doubao via proxy)
+- `--mode strict|flexible` — Error handling mode
+- `--delay <seconds>` — Step delay (default 1.0s)
+- `--use-computer-use` — Enable Anthropic computer-use loop for replay
 
-### 列出已录制任务
+### List Recorded Tasks
 
 ```
 /desktop-automator list
 ```
 
-运行: `cd desktop-automator && python scripts/task_manager.py list`
+Run: `cd desktop-automator && python3 scripts/task_manager.py list`
 
-## 前置条件
+Shows task name, step count, display_server (X11/Wayland), and creation time.
 
-### 系统依赖
-- **Linux**: `sudo apt-get install tesseract-ocr tesseract-ocr-chi-sim`
-- **Windows**: 下载安装 [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki)
+### Task Info and Delete
 
-### Python 依赖
+```
+/desktop-automator info <task-name>
+/desktop-automator delete <task-name>
+```
+
+## Prerequisites
+
+### System Dependencies
+- **Linux X11**: `sudo apt-get install tesseract-ocr tesseract-ocr-chi-sim`
+- **Linux Wayland**: `grim` (screenshot), `gnome-screenshot` (GNOME fallback)
+- **Windows**: [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki)
+
+### Python Dependencies
 ```bash
 cd desktop-automator && pip install -r requirements.txt
 ```
+Requires: `openai>=1.0.0`, `anthropic>=0.40.0`, `numpy>=1.24.0`, `opencv-python>=4.8.0`
 
-### API Key（可选，用于远端视觉识别）
-设置环境变量: `ANTHROPIC_API_KEY=sk-ant-...`
-如果不设置，回放将只使用本地 OCR，识别能力受限。
+### Vision Provider Configuration
+- **doubao** (default): Uses `doubao-seed-2.0-pro` via OpenAI-compatible proxy at `http://192.168.136.124:8080/v1`
+- **anthropic**: Requires `ANTHROPIC_API_KEY` environment variable
 
-## 录制说明
+## Architecture
 
-- 录制时每次鼠标点击或键盘输入都会自动截屏并记录
-- 建议操作时缓慢、明确，避免快速连续操作
-- 按 Esc 键停止录制
-- 录制数据保存在 `tasks/<task-name>/` 目录
+V2 uses a semantic recording + Vision Provider replay architecture:
 
-## 回放说明
+1. **Semantic Recording**: Raw events (e.g., 206 keypresses) are merged into ~15 semantic steps with nearby text annotations
+2. **Vision Provider Replay**: Instead of OCR-first strategy, V2 uses Vision Provider as primary strategy:
+   - Screenshot → Send to Vision Provider → Get action decision → Execute → Verify → Loop
+3. **Computer-Use Loop**: Anthropic computer-use API enables iterative screenshot analysis and action execution
 
-回放使用混合视觉识别策略：
-1. **本地 OCR**（优先）— 提取屏幕文字，通过文字匹配定位目标元素
-2. **远端视觉 API**（兜底）— 当 OCR 无法匹配时，调用 Claude Vision 分析截图
-3. **坐标回退** — 如果以上都失败，使用录制时的原始坐标（可能因分辨率变化不准确）
-
-如果遇到分辨率变化，会自动缩放坐标。
-
-## Platform Support
-
-- **Linux**: X11 显示服务器，需要桌面环境
-- **Windows**: Win32，原生支持
+The screenshot→Vision→execute→verify loop replaces V1's fragile OCR-matching approach with robust visual understanding.
