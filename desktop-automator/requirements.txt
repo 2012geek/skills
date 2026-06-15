@@ -6,3 +6,4 @@ pytesseract>=0.3.10
 anthropic>=0.40.0
 opencv-python>=4.8.0
 pytest>=8.0.0
+numpy>=1.24.0
