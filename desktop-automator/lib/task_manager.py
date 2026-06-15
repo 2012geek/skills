@@ -27,3 +27,13 @@ class TaskManager:
             if "action" not in step or "id" not in step:
                 return False
         return True
+
+    def get_task_info(self, name):
+        data = self.load_task(name)
+        return {
+            "name": data["name"],
+            "step_count": len(data["steps"]),
+            "platform": data.get("platform"),
+            "display_server": data.get("display_server"),
+            "created": data.get("created"),
+        }
