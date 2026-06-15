@@ -1,23 +1,39 @@
 # scripts/player.py
+"""Computer-use replay loop with Vision Provider as primary strategy.
+
+Iterates through semantic steps, using VisionProvider to locate click targets
+by comparing reference and current screenshots. Falls back to coordinate
+adaptation when vision detection fails.
+"""
+
 import argparse
-import json
 import os
 import sys
 import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from lib.task_manager import TaskManager
-from lib.screen_capture import capture_screen, save_screenshot
+from lib.screen_capture import capture_screen
 from lib.coordinate_adapter import CoordinateAdapter
-from lib.platform_detector import detect_platform, get_screen_size
-from scripts.ocr_engine import OcrEngine
-from scripts.vision_api import VisionApi
+from lib.platform_detector import detect_platform, get_screen_size, detect_display_server
+from lib.vision_provider import get_provider
 import pyautogui
 
-pyautogui.PAUSE = 0.5
+pyautogui.PAUSE = 0.3
+
 
 class Player:
-    def __init__(self, task_name, tasks_dir=None, mode="flexible", delay=1.0):
+    """Replays recorded desktop operations using LLM-driven computer-use pattern.
+
+    For click actions, the primary strategy is Vision Provider (doubao or anthropic)
+    which compares the current screenshot against the reference screenshot to locate
+    the target element. Falls back to coordinate adaptation when vision fails.
+
+    For type actions, text is typed directly via pyautogui.write().
+    For keypress actions, compound keys are decomposed into keyDown/press/keyUp sequences.
+    """
+
+    def __init__(self, task_name, tasks_dir=None, mode="flexible", delay=1.0, provider_name=None):
         self.tm = TaskManager(tasks_dir)
         self.task_name = task_name
         self.mode = mode
@@ -25,11 +41,12 @@ class Player:
         self.task_data = self.tm.load_task(task_name)
         self.task_dir = os.path.join(self.tm.tasks_dir, task_name)
         self.screenshots_dir = os.path.join(self.task_dir, "screenshots")
-        self.ocr = OcrEngine()
-        self.vision = VisionApi()
+        self.vision = get_provider(provider_name)
         self.results = []
+        self.methods_used = {}
 
     def replay(self):
+        """Iterate through semantic steps, calling _replay_step for each."""
         print(f"Replaying task '{self.task_name}' ({len(self.task_data['steps'])} steps)...")
         platform = detect_platform()
         if platform != self.task_data["platform"]:
@@ -38,12 +55,14 @@ class Player:
         current_size = get_screen_size()
         adapter = CoordinateAdapter(
             self.task_data.get("recorded_width", current_size[0]),
-            self.task_data.get("recorded_height", current_size[1])
+            self.task_data.get("recorded_height", current_size[1]),
         )
 
         for step in self.task_data["steps"]:
             result = self._replay_step(step, adapter, current_size)
             self.results.append(result)
+            method = result.get("method", "unknown")
+            self.methods_used[method] = self.methods_used.get(method, 0) + 1
             if result["status"] == "failed" and self.mode == "strict":
                 print(f"Step {step['id']} failed in strict mode. Stopping.")
                 break
@@ -52,75 +71,166 @@ class Player:
         self._print_summary()
 
     def _replay_step(self, step, adapter, current_size):
+        """Replay a single semantic step based on its action type.
+
+        Handles 'type', 'click', and 'keypress' actions with appropriate strategies.
+        """
         print(f"\nStep {step['id']}: {step['description']}")
 
-        ref_img_path = os.path.join(self.screenshots_dir, step["screenshot"])
-        if not os.path.exists(ref_img_path):
-            return {"step_id": step["id"], "status": "failed", "reason": "reference screenshot missing"}
+        action = step["action"]
 
-        from PIL import Image
-        ref_img = Image.open(ref_img_path)
+        if action == "type":
+            return self._replay_type(step)
+
+        elif action == "click":
+            return self._replay_click(step, adapter, current_size)
+
+        elif action == "keypress":
+            return self._replay_keypress(step)
+
+        else:
+            return {"step_id": step["id"], "status": "unknown", "action": action}
+
+    def _replay_type(self, step):
+        """Type text directly via pyautogui.write()."""
+        text = step.get("text", "")
+        if not text:
+            return {"step_id": step["id"], "status": "failed", "reason": "no text to type"}
+        pyautogui.write(text, interval=0.05)
+        print(f"  Typed: '{text}'")
+        return {"step_id": step["id"], "status": "success", "method": "direct_type", "text": text}
+
+    def _replay_click(self, step, adapter, current_size):
+        """Locate and click an element using Vision Provider as primary strategy.
+
+        Strategy chain:
+        1. Capture current screen
+        2. Load reference screenshot (or use current as reference if missing)
+        3. Build vision prompt from step description + nearby_text + position
+        4. Call vision.locate_element(current, ref, prompt)
+        5. If found with confidence >= 0.5: click at returned coordinates
+        6. If not found: fall back to coordinate adaptation from recorded position
+        """
         current_img = capture_screen()
 
-        # Strategy 1: OCR text matching
-        ref_blocks = self.ocr.extract_text_blocks(ref_img)
-        current_blocks = self.ocr.extract_text_blocks(current_img)
+        # Convert current image to PNG bytes
+        from io import BytesIO
+        buf = BytesIO()
+        current_img.save(buf, format="PNG")
+        current_bytes = buf.getvalue()
 
-        target_pos = None
-        if step.get("position"):
-            target_pos = self.ocr.match_reference_area(
-                current_blocks, ref_blocks,
-                step["position"]["x"], step["position"]["y"]
-            )
-
-        # Strategy 2: Vision API fallback
-        if not target_pos and step.get("description"):
-            from io import BytesIO
-            buf = BytesIO()
-            current_img.save(buf, format="PNG")
-            current_bytes = buf.getvalue()
+        # Load reference screenshot if it exists, otherwise use current as reference
+        ref_path = os.path.join(self.screenshots_dir, step.get("screenshot", ""))
+        if os.path.exists(ref_path):
+            from PIL import Image
+            ref_img = Image.open(ref_path)
             buf2 = BytesIO()
             ref_img.save(buf2, format="PNG")
             ref_bytes = buf2.getvalue()
-            vision_result = self.vision.locate_element(current_bytes, ref_bytes, step["description"])
-            if vision_result.get("found"):
-                target_pos = {"x": vision_result["x"], "y": vision_result["y"], "method": "vision_api"}
+        else:
+            ref_bytes = current_bytes
 
-        # Execute action
-        if step["action"] == "click":
-            if target_pos:
-                adapted = adapter.adapt(target_pos["x"], target_pos["y"], current_size[0], current_size[1])
-                pyautogui.click(adapted[0], adapted[1])
-                print(f"  Clicked at ({adapted[0]}, {adapted[1]}) via {target_pos.get('method', 'ocr')}")
-                return {"step_id": step["id"], "status": "success", "method": target_pos.get("method", "ocr"), "position": adapted}
-            elif step.get("position"):
-                adapted = adapter.adapt(step["position"]["x"], step["position"]["y"], current_size[0], current_size[1])
-                pyautogui.click(adapted[0], adapted[1])
-                print(f"  Clicked at ({adapted[0]}, {adapted[1]}) via original coordinates")
-                return {"step_id": step["id"], "status": "success", "method": "original_coords", "position": adapted}
-            else:
-                return {"step_id": step["id"], "status": "failed", "reason": "no position data"}
+        # Build vision prompt and call Vision Provider
+        description = self._build_vision_prompt(step)
+        vision_result = self.vision.locate_element(current_bytes, ref_bytes, description)
 
-        elif step["action"] == "keypress":
-            key = step.get("key", "")
-            if "+" in key:
-                keys = key.split("+")
-                for k in keys[:-1]:
-                    pyautogui.keyDown(k)
-                pyautogui.press(keys[-1])
-                for k in reversed(keys[:-1]):
-                    pyautogui.keyUp(k)
-            else:
-                pyautogui.press(key)
+        # Determine provider method name for reporting
+        provider_method = type(self.vision).__name__.lower().replace("provider", "_vision")
+        # DoubaoProvider -> "doubao_vision", AnthropicProvider -> "anthropic_vision"
+
+        if vision_result.get("found") and vision_result.get("confidence", 0) >= 0.5:
+            x = vision_result["x"]
+            y = vision_result["y"]
+            # Adapt vision coordinates if screen size differs
+            adapted = adapter.adapt(x, y, current_size[0], current_size[1])
+            pyautogui.click(adapted[0], adapted[1])
+            print(f"  Clicked at ({adapted[0]}, {adapted[1]}) via {provider_method}")
+            return {
+                "step_id": step["id"],
+                "status": "success",
+                "method": provider_method,
+                "position": {"x": adapted[0], "y": adapted[1]},
+                "confidence": vision_result["confidence"],
+            }
+
+        # Fallback: coordinate adaptation from recorded position
+        if step.get("position"):
+            adapted = adapter.adapt(
+                step["position"]["x"],
+                step["position"]["y"],
+                current_size[0],
+                current_size[1],
+            )
+            pyautogui.click(adapted[0], adapted[1])
+            print(f"  Clicked at ({adapted[0]}, {adapted[1]}) via original_coords (fallback)")
+            return {
+                "step_id": step["id"],
+                "status": "success",
+                "method": "original_coords",
+                "position": {"x": adapted[0], "y": adapted[1]},
+            }
+
+        # No position data available at all
+        print(f"  Failed: no position data and vision did not locate element")
+        return {"step_id": step["id"], "status": "failed", "reason": "vision not found and no position data"}
+
+    def _replay_keypress(self, step):
+        """Handle compound keys (ctrl+c) and simple keys."""
+        key = step.get("key", "")
+        if not key:
+            return {"step_id": step["id"], "status": "failed", "reason": "no key specified"}
+
+        if "+" in key:
+            keys = key.split("+")
+            for k in keys[:-1]:
+                pyautogui.keyDown(k)
+            pyautogui.press(keys[-1])
+            for k in reversed(keys[:-1]):
+                pyautogui.keyUp(k)
+            print(f"  Pressed compound: {key}")
+        else:
+            pyautogui.press(key)
             print(f"  Pressed: {key}")
-            return {"step_id": step["id"], "status": "success", "method": "keypress", "key": key}
 
-        return {"step_id": step["id"], "status": "unknown", "action": step["action"]}
+        return {"step_id": step["id"], "status": "success", "method": "keypress", "key": key}
+
+    def _build_vision_prompt(self, step):
+        """Build a vision prompt from step description, nearby_text, and position.
+
+        Combines all available context into a single prompt string that helps
+        the Vision Provider locate the target element on the current screen.
+        """
+        parts = []
+
+        # Description is always present
+        description = step.get("description", "")
+        if description:
+            parts.append(description)
+
+        # Nearby text labels provide context for element identification
+        nearby_text = step.get("nearby_text")
+        if nearby_text:
+            labels = ", ".join(nearby_text)
+            parts.append(f"near text labels: {labels}")
+
+        # Original position gives a hint about where to look
+        position = step.get("position")
+        if position:
+            parts.append(f"originally at position ({position['x']}, {position['y']})")
+
+        return " | ".join(parts) if parts else "unknown element"
 
     def _print_summary(self):
+        """Print replay summary including methods used count."""
         success = sum(1 for r in self.results if r["status"] == "success")
         failed = sum(1 for r in self.results if r["status"] == "failed")
         print(f"\nReplay complete: {success} succeeded, {failed} failed out of {len(self.results)} steps")
+        if self.methods_used:
+            methods_str = ", ".join(
+                f"{method}: {count}" for method, count in sorted(self.methods_used.items())
+            )
+            print(f"Methods used: {{{methods_str}}}")
+
 
 def main():
     parser = argparse.ArgumentParser(description="Replay recorded desktop operations")
@@ -128,9 +238,11 @@ def main():
     parser.add_argument("--tasks-dir", default=None, help="Custom tasks directory")
     parser.add_argument("--mode", choices=["strict", "flexible"], default="flexible", help="Error handling mode")
     parser.add_argument("--delay", type=float, default=1.0, help="Delay between steps (seconds)")
+    parser.add_argument("--provider", choices=["doubao", "anthropic"], default=None, help="Vision provider to use")
     args = parser.parse_args()
-    player = Player(args.task, args.tasks_dir, args.mode, args.delay)
+    player = Player(args.task, args.tasks_dir, args.mode, args.delay, args.provider)
     player.replay()
+
 
 if __name__ == "__main__":
     main()
