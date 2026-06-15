@@ -41,7 +41,7 @@ Generate professional architecture diagrams (SVG) from any codebase automaticall
 Run the analysis script on your target directory or file:
 
 ```bash
-python scripts/analyze_codebase.py /path/to/code --output architecture.md
+cd arch-diagram && python scripts/analyze_codebase.py /path/to/code --output architecture.md
 ```
 
 **What it does:**
@@ -133,7 +133,7 @@ d2 --version
 ### Python Dependencies
 
 ```bash
-pip install -r requirements.txt
+cd arch-diagram && pip install -r requirements.txt
 ```
 
 ## Usage Examples
@@ -142,7 +142,7 @@ pip install -r requirements.txt
 
 ```bash
 # Step 1: Analyze codebase
-python scripts/analyze_codebase.py ~/projects/my-api --output api-arch.md
+cd arch-diagram && python scripts/analyze_codebase.py ~/projects/my-api --output api-arch.md
 
 # Step 2: Review analysis with LLM and write D2 diagram
 # Create api-arch.d2 based on the architecture analysis
@@ -154,7 +154,7 @@ d2 api-arch.d2 -o api-architecture.svg --layout elk
 ### Example 2: Single File Analysis
 
 ```bash
-python scripts/analyze_codebase.py ~/projects/app/main.py
+cd arch-diagram && python scripts/analyze_codebase.py ~/projects/app/main.py
 ```
 
 ### Example 3: Direct D2 Rendering
@@ -237,7 +237,7 @@ d2 input.d2 -o output.svg --layout elk    # Layered layout (recommended)
 d2 input.d2 -o output.svg --layout dagre  # Directed graph
 
 # Increase timeout for complex diagrams
-python scripts/render_d2.py input.d2 --timeout 60
+cd arch-diagram && python scripts/render_d2.py input.d2 --timeout 60
 ```
 
 **Generated diagram looks incomplete:**

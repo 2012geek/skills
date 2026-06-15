@@ -31,10 +31,10 @@ description: >
 
 ```bash
 # 使用 MR 编号
-node skills/gitcode-ci-repair/scripts/repair.js 50
+cd gitcode-ci-repair && node scripts/repair.js 50
 
 # 使用完整 URL
-node skills/gitcode-ci-repair/scripts/repair.js https://gitcode.com/openeuler/lerobot_ros2/pull/50
+cd gitcode-ci-repair && node scripts/repair.js https://gitcode.com/openeuler/lerobot_ros2/pull/50
 ```
 
 ### Claude Code 调用

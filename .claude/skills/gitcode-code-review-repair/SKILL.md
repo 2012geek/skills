@@ -25,7 +25,7 @@ Use this skill when:
 
 The repair process follows these steps:
 
-1. **Parse PR Link** - Extract owner, repo, PR number from URL
+1. **Parse PR link** - Extract owner, repo, PR number from URL
 2. **Get Review Status** - Fetch resolved/total comment count (hybrid: API + web scraping)
 3. **Calculate Unresolved** - `unresolved = total - resolved`
 4. **Check Completion** - If all resolved, exit with success message
@@ -109,10 +109,10 @@ Requires `config.json` in project root:
 
 ```bash
 # Run the repair script
-node skills/gitcode-code-review-repair/scripts/repair-pr.js
+cd gitcode-code-review-repair && node scripts/repair-pr.js
 
 # Or provide PR URL directly
-node skills/gitcode-code-review-repair/scripts/repair-pr.js https://gitcode.com/openeuler/lerobot_ros2/pull/50
+cd gitcode-code-review-repair && node scripts/repair-pr.js https://gitcode.com/openeuler/lerobot_ros2/pull/50
 ```
 
 ### Slash Command

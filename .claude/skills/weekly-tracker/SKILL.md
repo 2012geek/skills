@@ -18,8 +18,8 @@ Tracks git activity across multiple projects on different platforms (GitHub, Ato
 
 1. Copy `config.example.json` to `config.json` and configure your projects
 2. Set platform tokens (e.g., `GITHUB_TOKEN`, `ATOMICGIT_TOKEN`) as env vars
-3. Run `npm run collect` to pull your first weekly report
-4. Run `npm run serve` to start the dashboard at http://localhost:3456
+3. Run `cd weekly-tracker && npm run collect` to pull your first weekly report
+4. Run `cd weekly-tracker && npm run serve` to start the dashboard at http://localhost:3456
 
 ## Configuration
 

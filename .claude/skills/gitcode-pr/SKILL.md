@@ -24,19 +24,19 @@ description: >
 
 ```bash
 # 基础版本（不使用 LLM）
-node skills/gitcode-pr/scripts/generate-semantic-desc-v3.js <prNumber>
+cd gitcode-pr && node scripts/generate-semantic-desc-v3.js <prNumber>
 
 # 使用 LLM 分析文件内容（从 ~/.claude/settings.json 读取 API 配置）
-node skills/gitcode-pr/scripts/generate-semantic-desc-v3.js 50
+cd gitcode-pr && node scripts/generate-semantic-desc-v3.js 50
 
 # 非交互模式（自动确认更新）
-node skills/gitcode-pr/scripts/generate-semantic-desc-v3.js 50 <<< "y"
+cd gitcode-pr && node scripts/generate-semantic-desc-v3.js 50 <<< "y"
 ```
 
 ### 使用浏览器创建 PR
 
 ```bash
-node skills/gitcode-pr/scripts/browser-pr.js <source-repo> <source-branch> <target-repo> <target-branch>
+cd gitcode-pr && node scripts/browser-pr.js <source-repo> <source-branch> <target-repo> <target-branch>
 ```
 
 ## 设计理念

@@ -13,19 +13,19 @@ license: MIT
 ### 分析远程仓库
 
 ```
-node scripts/analyze.js --repo https://github.com/owner/repo
+cd contributor-statistic && node scripts/analyze.js --repo https://github.com/owner/repo
 ```
 
 ### 分析本地仓库
 
 ```
-node scripts/analyze.js --local /path/to/repo
+cd contributor-statistic && node scripts/analyze.js --local /path/to/repo
 ```
 
 ### 指定时间范围
 
 ```
-node scripts/analyze.js --repo https://github.com/owner/repo --since 2024-01-01 --until 2024-12-31
+cd contributor-statistic && node scripts/analyze.js --repo https://github.com/owner/repo --since 2024-01-01 --until 2024-12-31
 ```
 
 ## CLI Options

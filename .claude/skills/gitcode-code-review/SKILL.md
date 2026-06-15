@@ -80,7 +80,7 @@ Step 9: 发布评论     → 提交到 GitCode PR
 
 ```bash
 # 生成各代理的 prompts，保存到 .temp-review/ 目录
-node skills/gitcode-code-review/scripts/gitcode-reviewer.js --pr 123
+cd gitcode-code-review && node scripts/gitcode-reviewer.js --pr 123
 ```
 
 执行后：
@@ -93,19 +93,19 @@ node skills/gitcode-code-review/scripts/gitcode-reviewer.js --pr 123
 
 ```bash
 # 从 JSON 文件加载问题并提交到 GitCode PR
-node skills/gitcode-code-review/scripts/gitcode-reviewer.js --pr 123 --issues-from-json issues.json
+cd gitcode-code-review && node scripts/gitcode-reviewer.js --pr 123 --issues-from-json issues.json
 ```
 
 #### 跳过验证（快速模式）
 
 ```bash
-node skills/gitcode-code-review/scripts/gitcode-reviewer.js --pr 123 --issues-from-json issues.json --skip-validation
+cd gitcode-code-review && node scripts/gitcode-reviewer.js --pr 123 --issues-from-json issues.json --skip-validation
 ```
 
 #### 自定义置信度阈值
 
 ```bash
-node skills/gitcode-code-review/scripts/gitcode-reviewer.js --pr 123 --issues-from-json issues.json --threshold 70
+cd gitcode-code-review && node scripts/gitcode-reviewer.js --pr 123 --issues-from-json issues.json --threshold 70
 ```
 
 ### 4. JSON 文件格式

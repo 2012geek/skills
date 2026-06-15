@@ -23,8 +23,7 @@ license: MIT
 ### 1. 安装依赖
 
 ```bash
-cd skills/tencent-doc-download
-npm install
+cd tencent-doc-sync && npm install
 ```
 
 ### 2. 获取登录二维码（首次使用）
@@ -33,13 +32,13 @@ npm install
 
 ```bash
 # 仅截图保存
-node scripts/login.js
+cd tencent-doc-sync && node scripts/login.js
 
 # 截图并发送到邮箱（需配置邮箱密码）
-node scripts/login.js --email
+cd tencent-doc-sync && node scripts/login.js --email
 
 # 指定输出路径
-node scripts/login.js --output=/path/to/qr.png
+cd tencent-doc-sync && node scripts/login.js --output=/path/to/qr.png
 ```
 
 **自动完成步骤：**
@@ -60,21 +59,21 @@ node scripts/login.js --output=/path/to/qr.png
 #### 方式1：仅同步结构（快速）
 
 ```bash
-./test-sync.sh
+cd tencent-doc-sync && ./test-sync.sh
 # 或
-node src/smart-sync.js
+cd tencent-doc-sync && node src/smart-sync.js
 ```
 
 #### 方式2：下载内容 + 同步（推荐）
 
 ```bash
-node src/smart-sync.js --download
+cd tencent-doc-sync && node src/smart-sync.js --download
 ```
 
 #### 方式3：强制重新下载所有内容
 
 ```bash
-node src/smart-sync.js --download --force
+cd tencent-doc-sync && node src/smart-sync.js --download --force
 ```
 
 ### 3. 查看统计
@@ -200,7 +199,7 @@ A: 已修复！现在 Hash 计算会忽略 `synced_at` 时间戳，只对比实�
 ### Q: 为什么文档内容是"文档内容待提取"？
 A: 默认的同步模式只创建文档结构。使用 `--download` 参数下载实际内容：
 ```bash
-node src/smart-sync.js --download
+cd tencent-doc-sync && node src/smart-sync.js --download
 ```
 
 ### Q: 如何更换目标仓库？
@@ -209,7 +208,7 @@ A: 修改 `src/smart-sync.js` 中的 `REPO_DIR` 常量。
 ### Q: 如何获取登录二维码？
 A: 使用专门的登录脚本：
 ```bash
-node scripts/login.js
+cd tencent-doc-sync && node scripts/login.js
 ```
 脚本会自动完成所有登录步骤（包括点击 Agree 按钮），并验证二维码是否出现。
 

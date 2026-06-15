@@ -17,7 +17,7 @@ license: MIT
 ```
 
 执行以下步骤：
-1. 运行: `python scripts/recorder.py --name <task-name>`
+1. 运行: `cd desktop-automator && python scripts/recorder.py --name <task-name>`
 2. 告知用户：录制已开始，按 Esc 键停止
 3. 录制脚本会自动捕获鼠标点击和键盘输入，每步保存截图
 4. 当脚本结束时，确认录制数据已保存
@@ -29,7 +29,7 @@ license: MIT
 ```
 
 执行以下步骤：
-1. 运行: `python scripts/player.py --task <task-name> --mode flexible --delay 1.0`
+1. 运行: `cd desktop-automator && python scripts/player.py --task <task-name> --mode flexible --delay 1.0`
 2. 观察输出，每步报告执行状态
 3. 如果某步失败：
    - 在 flexible 模式下，报告失败但继续
@@ -46,7 +46,7 @@ license: MIT
 /desktop-automator list
 ```
 
-运行: `python scripts/task_manager.py list`
+运行: `cd desktop-automator && python scripts/task_manager.py list`
 
 ## 前置条件
 
@@ -56,7 +56,7 @@ license: MIT
 
 ### Python 依赖
 ```bash
-pip install -r requirements.txt
+cd desktop-automator && pip install -r requirements.txt
 ```
 
 ### API Key（可选，用于远端视觉识别）

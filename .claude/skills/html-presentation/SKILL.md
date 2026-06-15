@@ -12,18 +12,18 @@ license: MIT
 
 Generate a presentation from markdown:
 ```bash
-node cli.js generate <input.md> --theme <theme-name>
+cd html-presentation && node cli.js generate <input.md> --theme <theme-name>
 ```
 
 With AI-powered quality verification:
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."
-node cli.js generate <input.md> --verify --threshold 80
+cd html-presentation && node cli.js generate <input.md> --verify --threshold 80
 ```
 
 Interactive mode with human intervention:
 ```bash
-node cli.js generate <input.md> --verify --interactive
+cd html-presentation && node cli.js generate <input.md> --verify --interactive
 ```
 
 ## Features
@@ -48,13 +48,13 @@ node cli.js generate <input.md> --verify --interactive
 ## Examples
 
 # Basic generation
-node cli.js generate README.md --theme seriph
+cd html-presentation && node cli.js generate README.md --theme seriph
 
 # With verification
-node cli.js generate docs/guide.md --verify --threshold 85
+cd html-presentation && node cli.js generate docs/guide.md --verify --threshold 85
 
 # Interactive mode
-node cli.js generate content.md --verify --interactive
+cd html-presentation && node cli.js generate content.md --verify --interactive
 
 ## Output
 
