@@ -38,11 +38,14 @@ class RecordingStatus:
         """Update steps_so_far in the status file."""
         if not os.path.exists(self.status_path):
             return
-        with open(self.status_path, "r") as f:
-            data = json.load(f)
-        data["steps_so_far"] = count
-        with open(self.status_path, "w") as f:
-            json.dump(data, f, indent=2)
+        try:
+            with open(self.status_path, "r") as f:
+                data = json.load(f)
+            data["steps_so_far"] = count
+            with open(self.status_path, "w") as f:
+                json.dump(data, f, indent=2)
+        except (json.JSONDecodeError, OSError):
+            return
 
     def remove(self):
         """Delete the .recording file (called when recording ends successfully)."""

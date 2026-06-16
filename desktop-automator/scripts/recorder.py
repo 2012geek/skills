@@ -4,6 +4,7 @@ import json
 import os
 import signal
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 
@@ -85,6 +86,7 @@ class Recorder:
         self.ocr_engine = OcrEngine()
         self._recording_status = RecordingStatus(task_name, tasks_dir)
         self._osd = None
+        self._lock = threading.Lock()
 
     def start(self):
         os.makedirs(self.screenshots_dir, exist_ok=True)
@@ -120,32 +122,35 @@ class Recorder:
         self.stop()
 
     def _signal_handler(self, signum, frame):
-        """Handle SIGTERM/SIGINT — save data before exiting."""
+        """Handle SIGTERM/SIGINT — save data and close OSD before exiting."""
         print(f"\nReceived signal {signum}, saving recording data...")
         self.stop()
+        if self._osd and self._osd.root:
+            self._osd.root.after(0, self._osd._on_stop_click)
 
     def stop(self):
         """Stop recording, flush buffer, save task, remove status file."""
-        if not self.recording:
-            return
-        self.recording = False
+        with self._lock:
+            if not self.recording:
+                return
+            self.recording = False
 
-        # Flush any remaining accumulated text
-        flushed_event = self.key_merger.flush()
-        if flushed_event is not None:
-            self._record_step_from_event(flushed_event)
+            # Flush any remaining accumulated text
+            flushed_event = self.key_merger.flush()
+            if flushed_event is not None:
+                self._record_step_from_event(flushed_event)
 
-        # Stop listeners
-        if self.mouse_listener:
-            self.mouse_listener.stop()
-        if self.key_listener:
-            self.key_listener.stop()
+            # Stop listeners
+            if self.mouse_listener:
+                self.mouse_listener.stop()
+            if self.key_listener:
+                self.key_listener.stop()
 
-        # Save task data
-        self._save_task()
+            # Save task data
+            self._save_task()
 
-        # Remove status file
-        self._recording_status.remove()
+            # Remove status file
+            self._recording_status.remove()
 
     def _on_click(self, x, y, button, pressed):
         if not self.recording:
@@ -214,35 +219,36 @@ class Recorder:
         )
 
     def _record_step(self, action, position=None, key=None, text=None, description=""):
-        self.step_counter += 1
-        screenshot_name = f"step-{self.step_counter:03d}.png"
-        screenshot_path = os.path.join(self.screenshots_dir, screenshot_name)
-        img = capture_screen()
-        save_screenshot(img, screenshot_path)
+        with self._lock:
+            self.step_counter += 1
+            screenshot_name = f"step-{self.step_counter:03d}.png"
+            screenshot_path = os.path.join(self.screenshots_dir, screenshot_name)
+            img = capture_screen()
+            save_screenshot(img, screenshot_path)
 
-        nearby_text = None
-        if position is not None:
-            nearby_text = self._extract_nearby_text(img, position)
+            nearby_text = None
+            if position is not None:
+                nearby_text = self._extract_nearby_text(img, position)
 
-        step = {
-            "id": self.step_counter,
-            "action": action,
-            "position": position,
-            "screenshot": screenshot_name,
-            "key": key,
-            "text": text,
-            "description": description,
-            "nearby_text": nearby_text,
-        }
-        self.steps.append(step)
-        print(f"  Step {self.step_counter}: {description}")
+            step = {
+                "id": self.step_counter,
+                "action": action,
+                "position": position,
+                "screenshot": screenshot_name,
+                "key": key,
+                "text": text,
+                "description": description,
+                "nearby_text": nearby_text,
+            }
+            self.steps.append(step)
+            print(f"  Step {self.step_counter}: {description}")
 
-        # Update OSD step count (schedule on main thread)
-        if self._osd:
-            self._osd.update_steps(self.step_counter)
+            # Update OSD step count (schedule on main thread)
+            if self._osd:
+                self._osd.update_steps(self.step_counter)
 
-        # Update status file
-        self._recording_status.update_steps(self.step_counter)
+            # Update status file
+            self._recording_status.update_steps(self.step_counter)
 
     def _extract_nearby_text(self, screenshot_img, position, radius=200, max_results=5):
         blocks = self.ocr_engine.extract_text_blocks(screenshot_img)
