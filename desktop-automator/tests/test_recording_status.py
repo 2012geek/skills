@@ -26,6 +26,21 @@ def test_create_status_file():
         assert data["pid"] == os.getpid()
         assert "started" in data
         assert data["steps_so_far"] == 0
+        assert data["display_server"] == "unknown"
+    finally:
+        shutil.rmtree(tmp)
+
+
+def test_create_status_file_with_display_server():
+    """Creating a RecordingStatus with display_server writes it correctly."""
+    tmp = tempfile.mkdtemp()
+    try:
+        rs = RecordingStatus(task_name="ds-task", tasks_dir=tmp)
+        rs.create(display_server="wayland")
+        status_path = os.path.join(tmp, "ds-task", ".recording")
+        with open(status_path) as f:
+            data = json.load(f)
+        assert data["display_server"] == "wayland"
     finally:
         shutil.rmtree(tmp)
 
