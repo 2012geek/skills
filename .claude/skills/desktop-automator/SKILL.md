@@ -18,10 +18,11 @@ LLM-driven desktop automation with semantic recording and Vision Provider replay
 
 Steps:
 1. Run: `cd desktop-automator && python3 scripts/recorder.py --name <task-name>`
-2. Inform user: recording started, press Esc to stop
+2. An OSD floating window appears showing recording state (REC indicator, step count, elapsed time)
 3. The recorder captures mouse clicks and keyboard input, merging consecutive keypresses into semantic steps (not raw 206 events)
 4. Each step saves a screenshot and records nearby text for later matching
-5. When the script exits, confirm saved data in `tasks/<task-name>/`
+5. Stop recording by: clicking 'Stop Recording' button in OSD window, pressing Esc, or Ctrl+C
+6. On stop, task data is saved to `tasks/<task-name>/task.json` and OSD window closes
 
 ### Replay Recorded Operations
 
@@ -64,6 +65,19 @@ Shows task name, step count, display_server (X11/Wayland), and creation time.
 /desktop-automator info <task-name>
 /desktop-automator delete <task-name>
 ```
+
+### Check Recording Status
+
+```
+/desktop-automator status
+```
+
+Run: `cd desktop-automator && python3 scripts/task_manager.py status`
+
+Shows:
+- If recording active: task name, step count, elapsed time, PID
+- If incomplete recording: warning about dead PID, cleanup suggestion
+- If no recording: "No recording in progress"
 
 ## Prerequisites
 
