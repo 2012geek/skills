@@ -240,3 +240,52 @@ def test_cli_list_command():
         assert info["display_server"] in ("x11", "wayland", "unknown")
     finally:
         shutil.rmtree(tmp)
+
+
+def test_recording_status_lifecycle():
+    """Verify status file is created, updated, and removed during recording lifecycle."""
+    tmp = tempfile.mkdtemp()
+    try:
+        from lib.recording_status import RecordingStatus
+
+        rs = RecordingStatus(task_name="lifecycle-test", tasks_dir=tmp)
+        rs.create(display_server="wayland")
+
+        status_path = os.path.join(tmp, "lifecycle-test", ".recording")
+        assert os.path.exists(status_path)
+
+        rs.update_steps(3)
+        with open(status_path) as f:
+            data = json.load(f)
+        assert data["steps_so_far"] == 3
+
+        rs.remove()
+        assert not os.path.exists(status_path)
+    finally:
+        shutil.rmtree(tmp)
+
+
+def test_status_cli_command():
+    """Verify the status CLI command detects active and inactive states."""
+    tmp = tempfile.mkdtemp()
+    try:
+        from lib.recording_status import RecordingStatus
+
+        result = RecordingStatus.check_active(tmp)
+        assert result is None
+
+        rs = RecordingStatus(task_name="cli-status-test", tasks_dir=tmp)
+        rs.create(display_server="wayland")
+        rs.update_steps(2)
+
+        result = RecordingStatus.check_active(tmp)
+        assert result is not None
+        assert result["task_name"] == "cli-status-test"
+        assert result["steps_so_far"] == 2
+        assert result["pid_alive"] is True
+
+        rs.remove()
+        result = RecordingStatus.check_active(tmp)
+        assert result is None
+    finally:
+        shutil.rmtree(tmp)
