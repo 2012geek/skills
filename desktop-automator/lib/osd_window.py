@@ -18,6 +18,7 @@ class OSDWindow:
         self.step_count = step_count
         self.start_time = start_time or time.time()
         self._stop_callback = stop_callback
+        self._stopping = False
         self.root = None
         self._step_label = None
         self._time_label = None
@@ -73,15 +74,23 @@ class OSDWindow:
         self.root.mainloop()
 
     def update_steps(self, count):
-        """Update step count display. Safe to call from any thread."""
-        self.step_count = count
-        if self.root and self._step_label:
-            self.root.after(0, self._refresh_step_label)
+        """Update step count display. Safe to call from any thread.
 
-    def _refresh_step_label(self):
-        """Refresh step label on the main thread."""
+        Both the data update and UI refresh are scheduled on the main thread
+        via root.after(), eliminating any cross-thread reads.
+        """
+        if self._stopping:
+            return
+        if self.root and self._step_label:
+            self.root.after(0, lambda: self._do_step_update(count))
+        else:
+            self.step_count = count
+
+    def _do_step_update(self, count):
+        """Update step_count and refresh label on the main thread."""
+        self.step_count = count
         if self._step_label:
-            self._step_label.config(text=f"Step: {self.step_count}")
+            self._step_label.config(text=f"Step: {count}")
 
     def _tick_timer(self):
         """Update elapsed time display every second."""
@@ -93,13 +102,15 @@ class OSDWindow:
         self._timer_id = self.root.after(1000, self._tick_timer)
 
     def _format_elapsed(self, seconds):
-        """Format elapsed seconds as MM:SS."""
+        """Format elapsed seconds as MM:SS. Clamps negative values to 00:00."""
+        seconds = max(0, seconds)
         minutes = seconds // 60
         secs = seconds % 60
         return f"{minutes:02d}:{secs:02d}"
 
     def _on_stop_click(self):
         """Handle stop button click or window close."""
+        self._stopping = True
         if self._timer_id and self.root:
             self.root.after_cancel(self._timer_id)
         if self._stop_callback:
