@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+import signal
 import sys
 import time
 from datetime import datetime, timezone
@@ -9,6 +10,8 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from lib.platform_detector import detect_platform, detect_display_server
 from lib.screen_capture import capture_screen, save_screenshot
+from lib.recording_status import RecordingStatus
+from lib.osd_window import OSDWindow
 from scripts.ocr_engine import OcrEngine
 from pynput import mouse, keyboard
 
@@ -26,57 +29,32 @@ SPACE_KEYS = frozenset({"space"})
 
 
 class KeyMerger:
-    """Merges consecutive printable character keypresses into a single 'type' event.
-
-    Rules:
-      - Printable single characters -> accumulated into buffer
-      - Space key -> added as space character in buffer
-      - Modifier keys -> flush pending text, emit as 'keypress' event
-      - Other special keys -> flush pending text, emit as 'keypress' event
-    """
+    """Merges consecutive printable character keypresses into a single 'type' event."""
 
     def __init__(self):
         self._buffer = ""
 
     def add_key(self, key_str):
-        """Process a key string and return (flushed_event, special_event) tuple.
-
-        Either or both can be None:
-          - If key is a printable char or space: accumulated, returns (None, None)
-          - If key is a modifier: flushes pending text (if any) as type event,
-            then emits the modifier as keypress. Returns (flushed_event, special_event)
-          - If key is another special key: flushes pending text (if any) as type event,
-            then emits the special key as keypress. Returns (flushed_event, special_event)
-        """
         flushed_event = None
         special_event = None
 
         if key_str in SPACE_KEYS:
-            # Space is included as a character in the buffer
             self._buffer += " "
         elif len(key_str) == 1 and key_str.isprintable():
-            # Single printable character -> accumulate
             self._buffer += key_str
         elif key_str in MODIFIER_KEYS:
-            # Modifier key -> flush pending text, emit as keypress
             flushed_event = self._flush_buffer()
             special_event = {"action": "keypress", "key": key_str}
         else:
-            # Other special key (enter, tab, esc, etc.) -> flush pending text, emit as keypress
             flushed_event = self._flush_buffer()
             special_event = {"action": "keypress", "key": key_str}
 
         return (flushed_event, special_event)
 
     def flush(self):
-        """Flush the buffer and return a type event, or None if buffer is empty.
-
-        Called at end of recording or when a click event interrupts typing.
-        """
         return self._flush_buffer()
 
     def _flush_buffer(self):
-        """Internal: create a type event from buffer contents if non-empty."""
         if not self._buffer:
             return None
         text = self._buffer
@@ -85,10 +63,8 @@ class KeyMerger:
 
 
 class Recorder:
-    """Records desktop operations (mouse clicks and keyboard input) with
-    semantic merging of consecutive character keypresses into 'type' events.
-
-    Each step is annotated with nearby_text from OCR when a position is present.
+    """Records desktop operations with semantic merging, OSD feedback,
+    signal handling, and status file tracking.
     """
 
     def __init__(self, task_name, tasks_dir=None):
@@ -98,20 +74,29 @@ class Recorder:
         self.task_name = task_name
         self.task_dir = os.path.join(tasks_dir, task_name)
         self.screenshots_dir = os.path.join(self.task_dir, "screenshots")
+        self.tasks_dir = tasks_dir
         self.steps = []
         self.step_counter = 0
         self.recording = True
+        self.start_time = time.time()
         self.mouse_listener = None
         self.key_listener = None
         self.key_merger = KeyMerger()
         self.ocr_engine = OcrEngine()
+        self._recording_status = RecordingStatus(task_name, tasks_dir)
+        self._osd = None
 
     def start(self):
         os.makedirs(self.screenshots_dir, exist_ok=True)
-        print(f"Recording task '{self.task_name}'...")
-        print("Press Esc to stop recording.")
-        print("Recording mouse clicks and keyboard shortcuts...")
 
+        # Create status file
+        self._recording_status.create(detect_display_server())
+
+        # Register signal handlers
+        signal.signal(signal.SIGTERM, self._signal_handler)
+        signal.signal(signal.SIGINT, self._signal_handler)
+
+        # Start listeners
         self.mouse_listener = mouse.Listener(on_click=self._on_click)
         self.key_listener = keyboard.Listener(
             on_press=self._on_key_press, on_release=self._on_key_release
@@ -119,26 +104,53 @@ class Recorder:
         self.mouse_listener.start()
         self.key_listener.start()
 
-        self.mouse_listener.join()
-        self.key_listener.join()
-        self._save_task()
+        print(f"Recording task '{self.task_name}'...")
+        print("Press Esc to stop, or click Stop button in OSD window.")
+
+        # Show OSD window on main thread (runs mainloop, replaces listener.join())
+        self._osd = OSDWindow(
+            step_count=0,
+            start_time=self.start_time,
+            stop_callback=self._osd_stop,
+        )
+        self._osd.show()
+
+    def _osd_stop(self):
+        """Callback from OSD stop button. Called on main thread."""
+        self.stop()
+
+    def _signal_handler(self, signum, frame):
+        """Handle SIGTERM/SIGINT — save data before exiting."""
+        print(f"\nReceived signal {signum}, saving recording data...")
+        self.stop()
 
     def stop(self):
+        """Stop recording, flush buffer, save task, remove status file."""
+        if not self.recording:
+            return
         self.recording = False
+
         # Flush any remaining accumulated text
         flushed_event = self.key_merger.flush()
         if flushed_event is not None:
             self._record_step_from_event(flushed_event)
+
+        # Stop listeners
         if self.mouse_listener:
             self.mouse_listener.stop()
         if self.key_listener:
             self.key_listener.stop()
 
+        # Save task data
+        self._save_task()
+
+        # Remove status file
+        self._recording_status.remove()
+
     def _on_click(self, x, y, button, pressed):
         if not self.recording:
             return
         if pressed:
-            # Flush any pending key buffer before recording the click
             flushed_event = self.key_merger.flush()
             if flushed_event is not None:
                 self._record_step_from_event(flushed_event)
@@ -157,8 +169,11 @@ class Recorder:
         if not self.recording:
             return
         if key == keyboard.Key.esc:
-            print("Esc pressed, stopping recording...")
-            self.stop()
+            # Schedule stop on main thread via OSD
+            if self._osd and self._osd.root:
+                self._osd.root.after(0, self._osd_stop)
+            else:
+                self.stop()
             return
 
     def _on_key_release(self, key):
@@ -180,10 +195,6 @@ class Recorder:
             self._record_step_from_event(special_event)
 
     def _record_step_from_event(self, event):
-        """Record a step from a KeyMerger event dict.
-
-        event must have 'action' key. It may also have 'text' or 'key'.
-        """
         action = event["action"]
         text = event.get("text")
         key = event.get("key")
@@ -226,11 +237,14 @@ class Recorder:
         self.steps.append(step)
         print(f"  Step {self.step_counter}: {description}")
 
-    def _extract_nearby_text(self, screenshot_img, position, radius=200, max_results=5):
-        """Extract OCR text blocks near the given position within radius pixels.
+        # Update OSD step count (schedule on main thread)
+        if self._osd:
+            self._osd.update_steps(self.step_counter)
 
-        Returns a list of nearby text strings (top max_results by proximity).
-        """
+        # Update status file
+        self._recording_status.update_steps(self.step_counter)
+
+    def _extract_nearby_text(self, screenshot_img, position, radius=200, max_results=5):
         blocks = self.ocr_engine.extract_text_blocks(screenshot_img)
         if not blocks:
             return None
