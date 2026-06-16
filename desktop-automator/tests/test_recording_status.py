@@ -3,7 +3,6 @@ import os
 import sys
 import tempfile
 import shutil
-import time
 
 sys_path = os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, sys_path)
@@ -60,6 +59,16 @@ def test_update_steps_so_far():
         shutil.rmtree(tmp)
 
 
+def test_update_steps_no_file():
+    """update_steps() gracefully returns when status file doesn't exist."""
+    tmp = tempfile.mkdtemp()
+    try:
+        rs = RecordingStatus(task_name="no-file-task", tasks_dir=tmp)
+        rs.update_steps(5)  # Should not raise
+    finally:
+        shutil.rmtree(tmp)
+
+
 def test_remove_status_file():
     """remove() deletes the .recording file."""
     tmp = tempfile.mkdtemp()
@@ -70,6 +79,19 @@ def test_remove_status_file():
         assert os.path.exists(status_path)
         rs.remove()
         assert not os.path.exists(status_path)
+    finally:
+        shutil.rmtree(tmp)
+
+
+def test_remove_idempotent():
+    """remove() is safe to call twice — no error on second call."""
+    tmp = tempfile.mkdtemp()
+    try:
+        rs = RecordingStatus(task_name="idem-task", tasks_dir=tmp)
+        rs.create()
+        rs.remove()
+        rs.remove()  # Second call should not raise
+        assert not os.path.exists(os.path.join(tmp, "idem-task", ".recording"))
     finally:
         shutil.rmtree(tmp)
 
@@ -119,5 +141,32 @@ def test_check_active_dead_pid():
         result = RecordingStatus.check_active(tmp)
         assert result is not None
         assert result["pid_alive"] is False
+    finally:
+        shutil.rmtree(tmp)
+
+
+def test_check_active_corrupted_json():
+    """check_active() skips directories with corrupted .recording files."""
+    tmp = tempfile.mkdtemp()
+    try:
+        task_dir = os.path.join(tmp, "corrupt-task")
+        os.makedirs(task_dir)
+        with open(os.path.join(task_dir, ".recording"), "w") as f:
+            f.write("{broken json!!!")
+        result = RecordingStatus.check_active(tmp)
+        assert result is None
+    finally:
+        shutil.rmtree(tmp)
+
+
+def test_check_active_skips_non_directories():
+    """check_active() skips non-directory entries in tasks_dir."""
+    tmp = tempfile.mkdtemp()
+    try:
+        # Create a regular file in tasks_dir (not a directory)
+        with open(os.path.join(tmp, "not-a-dir.txt"), "w") as f:
+            f.write("irrelevant")
+        result = RecordingStatus.check_active(tmp)
+        assert result is None
     finally:
         shutil.rmtree(tmp)
