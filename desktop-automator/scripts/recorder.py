@@ -86,7 +86,7 @@ class Recorder:
         self.ocr_engine = OcrEngine()
         self._recording_status = RecordingStatus(task_name, tasks_dir)
         self._osd = None
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
 
     def start(self):
         os.makedirs(self.screenshots_dir, exist_ok=True)
@@ -219,17 +219,17 @@ class Recorder:
         )
 
     def _record_step(self, action, position=None, key=None, text=None, description=""):
+        # Screen capture and OCR are slow — do outside lock to avoid blocking listeners
+        img = capture_screen()
+
+        nearby_text = None
+        if position is not None:
+            nearby_text = self._extract_nearby_text(img, position)
+
+        # Only hold the lock for brief shared-state mutations
         with self._lock:
             self.step_counter += 1
             screenshot_name = f"step-{self.step_counter:03d}.png"
-            screenshot_path = os.path.join(self.screenshots_dir, screenshot_name)
-            img = capture_screen()
-            save_screenshot(img, screenshot_path)
-
-            nearby_text = None
-            if position is not None:
-                nearby_text = self._extract_nearby_text(img, position)
-
             step = {
                 "id": self.step_counter,
                 "action": action,
@@ -241,14 +241,16 @@ class Recorder:
                 "nearby_text": nearby_text,
             }
             self.steps.append(step)
-            print(f"  Step {self.step_counter}: {description}")
+            step_counter = self.step_counter
 
-            # Update OSD step count (schedule on main thread)
-            if self._osd:
-                self._osd.update_steps(self.step_counter)
+        # I/O and UI updates outside lock
+        screenshot_path = os.path.join(self.screenshots_dir, screenshot_name)
+        save_screenshot(img, screenshot_path)
+        print(f"  Step {step_counter}: {description}")
 
-            # Update status file
-            self._recording_status.update_steps(self.step_counter)
+        if self._osd:
+            self._osd.update_steps(step_counter)
+        self._recording_status.update_steps(step_counter)
 
     def _extract_nearby_text(self, screenshot_img, position, radius=200, max_results=5):
         blocks = self.ocr_engine.extract_text_blocks(screenshot_img)
