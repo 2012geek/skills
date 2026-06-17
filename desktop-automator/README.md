@@ -25,6 +25,9 @@ V2 uses a 4-layer architecture:
 - Semantic recording: consecutive keypresses merged into ~15 steps (not 206 raw events)
 - Vision Provider replay: visual understanding replaces fragile OCR matching
 - Computer-use loop: iterative screenshot analysis and action execution
+- OSD floating window: live recording feedback with step count, elapsed time, and stop button
+- Signal handling: SIGTERM/SIGINT safely saves recording data before exit
+- Recording status: `.recording` file enables external status queries (`/desktop-automator status`)
 - Cross-platform: X11, Wayland, and Windows
 - Resolution-adaptive coordinate scaling
 - Strict and flexible error handling modes
@@ -49,7 +52,15 @@ pip install -r requirements.txt
 
 ```bash
 python3 scripts/recorder.py --name my-task
-# Click and type on screen, then press Esc to stop
+# An OSD floating window appears showing recording state (REC indicator, step count, elapsed time)
+# Stop recording by: clicking "Stop Recording" button, pressing Esc, or Ctrl+C
+```
+
+### Check recording status
+
+```bash
+python3 scripts/task_manager.py status
+# Shows: active recording (task name, steps, elapsed time) or "No recording in progress"
 ```
 
 ### Replay a task
@@ -67,6 +78,7 @@ python3 scripts/player.py --task my-task --provider anthropic --use-computer-use
 ```
 /desktop-automator record my-task
 /desktop-automator replay my-task
+/desktop-automator status
 /desktop-automator list
 /desktop-automator info my-task
 /desktop-automator delete my-task
@@ -89,6 +101,8 @@ V2 adds Wayland support alongside X11:
 | OCR failures | Common (broken matching) | Rare (Vision understands context) |
 | Typical replay time | 2-3 minutes | ~30 seconds |
 | Wayland support | None | Full (grim + gnome-screenshot) |
+| Recording feedback | Terminal only | OSD window + status command |
+| Data safety | Lost on interruption | SIGTERM/SIGINT saves data |
 
 ## Task Format
 
