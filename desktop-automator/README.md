@@ -4,11 +4,12 @@ LLM-driven desktop automation with semantic recording and Vision Provider replay
 
 ## Architecture
 
-V2 uses a 4-layer architecture:
+V2 uses a 5-layer architecture:
 
 | Layer | Purpose |
 |-------|---------|
 | Screen Capture | Cross-platform screenshots (X11/Wayland/Win32) with `mss` + `grim` |
+| Input Monitoring | Wayland: kernel-level `/dev/input/eventX` via ctypes; X11: pynput hooks |
 | Semantic Recording | Merge raw events into semantic steps with nearby text annotations |
 | Computer-Use Replay | Screenshot→Vision→execute→verify loop for adaptive replay |
 | Vision Provider | doubao-seed-2.0-pro (default) or Anthropic Claude Vision for UI understanding |
@@ -31,6 +32,7 @@ V2 uses a 4-layer architecture:
 - Cross-platform: X11, Wayland, and Windows
 - Resolution-adaptive coordinate scaling
 - Strict and flexible error handling modes
+- Dual input backend: evdev (Wayland kernel-level) + pynput (X11 fallback)
 
 ## Quick Start
 
@@ -44,7 +46,10 @@ sudo apt-get install tesseract-ocr tesseract-ocr-chi-sim  # Linux X11
 sudo apt-get install grim  # Wayland screenshot tool
 # Or on GNOME: gnome-screenshot
 
-# Python packages
+# One-time setup (Wayland input access + Python packages)
+sudo bash setup.sh
+
+# Or manually:
 pip install -r requirements.txt
 ```
 
@@ -86,11 +91,12 @@ python3 scripts/player.py --task my-task --provider anthropic --use-computer-use
 
 ## Wayland Support
 
-V2 adds Wayland support alongside X11:
+V2 adds full Wayland support alongside X11:
 
-- **X11**: Uses `mss` for screen capture (default on most Linux desktops)
-- **Wayland**: Uses `grim` for screen capture (Wayland-native screenshot tool)
-- The recorder detects the display server at startup and saves it in `task.json`
+- **Screen capture**: X11 uses `mss`; Wayland uses `grim` (or `gnome-screenshot`)
+- **Input monitoring**: X11 uses `pynput` (X11 global hooks); Wayland uses kernel-level `/dev/input/eventX` via pure Python ctypes/struct (no C dependencies)
+- The recorder detects the display server at startup and automatically selects the appropriate backend
+- Wayland input monitoring requires read access to `/dev/input/eventX` — run `sudo bash setup.sh` once to configure udev rules
 
 ## Performance Comparison
 
@@ -100,7 +106,7 @@ V2 adds Wayland support alongside X11:
 | Replay strategy | OCR-first, fragile | Vision Provider, robust |
 | OCR failures | Common (broken matching) | Rare (Vision understands context) |
 | Typical replay time | 2-3 minutes | ~30 seconds |
-| Wayland support | None | Full (grim + gnome-screenshot) |
+| Wayland support | None | Full (grim + evdev input + gnome-screenshot) |
 | Recording feedback | Terminal only | OSD window + status command |
 | Data safety | Lost on interruption | SIGTERM/SIGINT saves data |
 

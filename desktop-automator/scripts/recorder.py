@@ -14,7 +14,6 @@ from lib.screen_capture import capture_screen, save_screenshot
 from lib.recording_status import RecordingStatus
 from lib.osd_window import OSDWindow
 from scripts.ocr_engine import OcrEngine
-from pynput import mouse, keyboard
 
 
 MODIFIER_KEYS = frozenset({
@@ -66,6 +65,9 @@ class KeyMerger:
 class Recorder:
     """Records desktop operations with semantic merging, OSD feedback,
     signal handling, and status file tracking.
+
+    On Wayland: uses EvdevInputListener (kernel-level /dev/input/eventX).
+    On X11: uses pynput (X11 global input hooks).
     """
 
     def __init__(self, task_name, tasks_dir=None):
@@ -80,8 +82,7 @@ class Recorder:
         self.step_counter = 0
         self.recording = True
         self.start_time = time.time()
-        self.mouse_listener = None
-        self.key_listener = None
+        self._input_listeners = []
         self.key_merger = KeyMerger()
         self.ocr_engine = OcrEngine()
         self._recording_status = RecordingStatus(task_name, tasks_dir)
@@ -91,22 +92,19 @@ class Recorder:
     def start(self):
         os.makedirs(self.screenshots_dir, exist_ok=True)
 
+        display_server = detect_display_server()
+
         # Create status file
-        self._recording_status.create(detect_display_server())
+        self._recording_status.create(display_server)
 
         # Register signal handlers
         signal.signal(signal.SIGTERM, self._signal_handler)
         signal.signal(signal.SIGINT, self._signal_handler)
 
-        # Start listeners
-        self.mouse_listener = mouse.Listener(on_click=self._on_click)
-        self.key_listener = keyboard.Listener(
-            on_press=self._on_key_press, on_release=self._on_key_release
-        )
-        self.mouse_listener.start()
-        self.key_listener.start()
+        # Start input listeners based on display server
+        self._start_input_listeners(display_server)
 
-        print(f"Recording task '{self.task_name}'...")
+        print(f"Recording task '{self.task_name}' on {display_server}...")
         print("Press Esc to stop, or click Stop button in OSD window.")
 
         # Show OSD window on main thread (runs mainloop, replaces listener.join())
@@ -116,6 +114,45 @@ class Recorder:
             stop_callback=self._osd_stop,
         )
         self._osd.show()
+
+    def _start_input_listeners(self, display_server):
+        """Start appropriate input listeners for the display server."""
+        if display_server == "wayland":
+            self._start_wayland_listeners()
+        else:
+            self._start_x11_listeners()
+
+    def _start_wayland_listeners(self):
+        """Start EvdevInputListener for Wayland (kernel-level input events)."""
+        from lib.input_listener import EvdevInputListener
+
+        listener = EvdevInputListener(
+            on_click=self._on_evdev_click,
+            on_key_press=self._on_evdev_key_press,
+            on_key_release=self._on_evdev_key_release,
+        )
+        try:
+            listener.start()
+            self._input_listeners.append(listener)
+            print("  Using evdev (Wayland kernel-level input monitoring)")
+        except RuntimeError as e:
+            print(f"  WARNING: evdev failed: {e}")
+            print("  Falling back to pynput (may not work on Wayland)")
+            self._start_x11_listeners()
+
+    def _start_x11_listeners(self):
+        """Start pynput listeners for X11."""
+        from pynput import mouse, keyboard
+
+        mouse_listener = mouse.Listener(on_click=self._on_pynput_click)
+        key_listener = keyboard.Listener(
+            on_press=self._on_pynput_key_press,
+            on_release=self._on_pynput_key_release,
+        )
+        mouse_listener.start()
+        key_listener.start()
+        self._input_listeners.extend([mouse_listener, key_listener])
+        print("  Using pynput (X11 input hooks)")
 
     def _osd_stop(self):
         """Callback from OSD stop button. Called on main thread."""
@@ -141,10 +178,9 @@ class Recorder:
                 self._record_step_from_event(flushed_event)
 
             # Stop listeners
-            if self.mouse_listener:
-                self.mouse_listener.stop()
-            if self.key_listener:
-                self.key_listener.stop()
+            for listener in self._input_listeners:
+                if hasattr(listener, "stop"):
+                    listener.stop()
 
             # Save task data
             self._save_task()
@@ -152,44 +188,78 @@ class Recorder:
             # Remove status file
             self._recording_status.remove()
 
-    def _on_click(self, x, y, button, pressed):
-        if not self.recording:
-            return
+    # --- pynput callbacks (X11) ---
+    def _on_pynput_click(self, x, y, button, pressed):
+        """Handle mouse click from pynput. button is pynput.mouse.Button enum."""
         if pressed:
-            flushed_event = self.key_merger.flush()
-            if flushed_event is not None:
-                self._record_step_from_event(flushed_event)
+            self._handle_click(x, y, button.name)
 
-            position = {"x": x, "y": y}
-            description = f"click {button.name} at ({x},{y})"
-            self._record_step(
-                action="click",
-                position=position,
-                key=None,
-                text=None,
-                description=description,
-            )
-
-    def _on_key_press(self, key):
-        if not self.recording:
-            return
+    def _on_pynput_key_press(self, key):
+        """Handle key press from pynput. key is pynput.keyboard.Key or KeyCode."""
         if key == keyboard.Key.esc:
-            # Schedule stop on main thread via OSD
             if self._osd and self._osd.root:
                 self._osd.root.after(0, self._osd_stop)
             else:
                 self.stop()
             return
 
-    def _on_key_release(self, key):
-        if not self.recording:
-            return
+    def _on_pynput_key_release(self, key):
+        """Handle key release from pynput. key is pynput.keyboard.Key or KeyCode."""
         try:
             key_str = key.char if hasattr(key, "char") and key.char else key.name
         except AttributeError:
             key_str = str(key)
 
         if key_str in ("esc", "Esc"):
+            return
+
+        self._handle_key(key_str)
+
+    # --- evdev callbacks (Wayland) ---
+    def _on_evdev_click(self, x, y, button_name, pressed):
+        """Handle mouse click from EvdevInputListener. button_name is a string."""
+        if pressed:
+            self._handle_click(x, y, button_name)
+
+    def _on_evdev_key_press(self, key_name):
+        """Handle key press from EvdevInputListener. key_name is a string."""
+        if key_name == "esc":
+            if self._osd and self._osd.root:
+                self._osd.root.after(0, self._osd_stop)
+            else:
+                self.stop()
+            return
+
+    def _on_evdev_key_release(self, key_name):
+        """Handle key release from EvdevInputListener. key_name is a string."""
+        if key_name == "esc":
+            return
+
+        self._handle_key(key_name)
+
+    # --- Unified handlers ---
+    def _handle_click(self, x, y, button_name):
+        """Unified click handler for both pynput and evdev."""
+        if not self.recording:
+            return
+
+        flushed_event = self.key_merger.flush()
+        if flushed_event is not None:
+            self._record_step_from_event(flushed_event)
+
+        position = {"x": x, "y": y}
+        description = f"click {button_name} at ({x},{y})"
+        self._record_step(
+            action="click",
+            position=position,
+            key=None,
+            text=None,
+            description=description,
+        )
+
+    def _handle_key(self, key_str):
+        """Unified key handler for both pynput and evdev."""
+        if not self.recording:
             return
 
         flushed_event, special_event = self.key_merger.add_key(key_str)
