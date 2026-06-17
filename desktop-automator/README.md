@@ -111,22 +111,27 @@ V2 `task.json` includes semantic fields:
 ```json
 {
   "name": "my-task",
+  "platform": "linux",
   "display_server": "wayland",
   "steps": [
     {
-      "type": "click",
-      "x": 500,
-      "y": 300,
-      "nearby_text": "Save",
-      "text": "Save",
-      "description": "Click Save button",
-      "screenshot": "step_001.png"
+      "id": 1,
+      "action": "click",
+      "position": {"x": 500, "y": 300},
+      "nearby_text": ["Save"],
+      "text": null,
+      "key": null,
+      "description": "click left at (500,300)",
+      "screenshot": "step-001.png"
     },
     {
-      "type": "type",
+      "id": 2,
+      "action": "type",
+      "position": null,
       "text": "Hello World",
-      "description": "Type greeting in text field",
-      "screenshot": "step_002.png"
+      "key": null,
+      "description": "type 'Hello World'",
+      "screenshot": "step-002.png"
     }
   ]
 }
