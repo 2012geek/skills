@@ -12,14 +12,15 @@ session. After approval, all subsequent calls work without prompts.
 
 import subprocess
 import time
+import uuid
 
 try:
+    from dbus.mainloop.glib import DBusGMainLoop
+    DBusGMainLoop(set_as_default=True)
     import dbus
     import gi
     gi.require_version("GLib", "2.0")
     from gi.repository import GLib
-    gi.require_version("Gio", "2.0")
-    from gi.repository import Gio
     PORTAL_AVAILABLE = True
 except ImportError:
     PORTAL_AVAILABLE = False
@@ -72,25 +73,64 @@ def _get_keycode(key_name: str) -> int:
 
 
 def _get_screen_size_via_grim():
-    """Get screen dimensions via grim screenshot capture.
+    """Get screen dimensions via grim/gnome-screenshot capture.
 
-    grim output matches the actual Wayland coordinate space, unlike
+    These tools capture the full Wayland coordinate space, unlike
     pyautogui.size() which returns single-monitor dimensions.
     """
-    try:
-        result = subprocess.run(
-            ["grim", "-"],
-            capture_output=True,
-            check=True,
-            timeout=10,
-        )
-        from PIL import Image
-        from io import BytesIO
-        img = Image.open(BytesIO(result.stdout))
-        img.load()
-        return (img.width, img.height)
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        pass
+    import os
+    import shutil
+    import tempfile
+    from io import BytesIO
+    from PIL import Image
+
+    # Try grim (wlroots compositors: Sway, Hyprland)
+    if shutil.which("grim"):
+        try:
+            result = subprocess.run(
+                ["grim", "-"],
+                capture_output=True,
+                check=True,
+                timeout=10,
+            )
+            img = Image.open(BytesIO(result.stdout))
+            img.load()
+            return (img.width, img.height)
+        except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+            pass
+
+    # Try gnome-screenshot (GNOME/Mutter)
+    if shutil.which("gnome-screenshot"):
+        clean_env = {
+            "HOME": os.environ.get("HOME", ""),
+            "XDG_RUNTIME_DIR": os.environ.get("XDG_RUNTIME_DIR", ""),
+            "WAYLAND_DISPLAY": os.environ.get("WAYLAND_DISPLAY", ""),
+            "DISPLAY": os.environ.get("DISPLAY", ""),
+            "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
+            "XDG_SESSION_TYPE": os.environ.get("XDG_SESSION_TYPE", ""),
+            "XDG_CURRENT_DESKTOP": os.environ.get("XDG_CURRENT_DESKTOP", ""),
+            "USER": os.environ.get("USER", ""),
+            "LANG": os.environ.get("LANG", ""),
+            "DBUS_SESSION_BUS_ADDRESS": os.environ.get("DBUS_SESSION_BUS_ADDRESS", ""),
+        }
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+            tmp_path = tmp.name
+        try:
+            result = subprocess.run(
+                ["gnome-screenshot", "-f", tmp_path],
+                env=clean_env,
+                capture_output=True,
+                timeout=10,
+            )
+            if result.returncode == 0:
+                img = Image.open(tmp_path)
+                img.load()
+                return (img.width, img.height)
+        except (subprocess.CalledProcessError, RuntimeError, OSError):
+            pass
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
 
     import pyautogui
     return pyautogui.size()
@@ -105,15 +145,44 @@ class PortalBackend:
       3. Start → triggers permission dialog, waits for user approval
       4. NotifyPointerMotionAbsolute/NotifyPointerButton/NotifyKeyboardKeycode
 
-    The session is established lazily on first use and persists until
-    the backend is discarded. Permission dialog appears once.
+    Singleton pattern: only one session per process. Subsequent PortalBackend
+    instances reuse the existing session. Permission dialog appears once.
     """
 
+    _shared_session = None  # Singleton session state
+
     def __init__(self):
-        self._session_handle = None
-        self._bus = None
-        self._portal_iface = None
-        self._started = False
+        # Reuse shared session if already established
+        if PortalBackend._shared_session is not None:
+            self._session_handle = PortalBackend._shared_session["session_handle"]
+            self._bus = PortalBackend._shared_session["bus"]
+            self._portal_iface = PortalBackend._shared_session["portal_iface"]
+            self._started = True
+            self._token_counter = PortalBackend._shared_session["token_counter"]
+        else:
+            self._session_handle = None
+            self._bus = None
+            self._portal_iface = None
+            self._started = False
+            self._token_counter = 0
+
+    def _make_token(self, prefix="desktop_automator"):
+        """Generate a unique token for portal request/session handles."""
+        self._token_counter += 1
+        uid = str(uuid.uuid4()).replace("-", "_")
+        return f"{prefix}_{self._token_counter}_{uid}"
+
+    def _sender_name(self):
+        """Get the unique D-Bus bus name for this connection."""
+        return self._bus.get_unique_name()[1:].replace(".", "_")
+
+    def _make_request_path(self, handle_token):
+        """Construct the expected request object path from handle_token."""
+        return f"/org/freedesktop/portal/desktop/request/{self._sender_name()}/{handle_token}"
+
+    def _make_session_path(self, session_token):
+        """Construct the expected session object path from session_token."""
+        return f"/org/freedesktop/portal/desktop/session/{self._sender_name()}/{session_token}"
 
     def _ensure_session(self):
         """Establish a RemoteDesktop session if not already active."""
@@ -135,93 +204,115 @@ class PortalBackend:
             portal_obj, "org.freedesktop.portal.RemoteDesktop"
         )
 
-        # Step 1: CreateSession
-        request_path = self._portal_iface.CreateSession(
-            dbus.Dictionary({}, signature="sv")
-        )
-        self._session_handle = self._wait_for_create_session(request_path)
+        # Step 1: CreateSession with tokens
+        session_token = self._make_token("session")
+        handle_token = self._make_token("create")
+        request_path = self._make_request_path(handle_token)
+
+        options = dbus.Dictionary({
+            "session_handle_token": dbus.String(session_token),
+            "handle_token": dbus.String(handle_token),
+        }, signature="sv")
+
+        self._portal_iface.CreateSession(options)
+        self._session_handle = self._wait_for_response(request_path, "CreateSession")
+
+        # Extract actual session_handle from result
+        session_handle = self._session_handle
+        # The session_handle should be a path like /org/freedesktop/portal/desktop/session/SENDER/TOKEN
+        # If it came as a dbus variant, convert to string
+        if isinstance(session_handle, dict):
+            # Response was (response_code, results_dict) — extract session_handle from results
+            raise RuntimeError(f"Unexpected session handle format: {session_handle}")
 
         # Step 2: SelectDevices — request keyboard (1) and pointer (2)
-        self._portal_iface.SelectDevices(
-            self._session_handle,
-            dbus.Dictionary({"devices": dbus.UInt32(1 | 2)}, signature="sv"),
-        )
-        self._wait_for_request("SelectDevices")
+        select_handle_token = self._make_token("select")
+        select_request_path = self._make_request_path(select_handle_token)
+        select_options = dbus.Dictionary({
+            "devices": dbus.UInt32(1 | 2),  # 1=keyboard, 2=pointer
+            "handle_token": dbus.String(select_handle_token),
+        }, signature="sv")
+
+        self._portal_iface.SelectDevices(session_handle, select_options)
+        self._wait_for_response(select_request_path, "SelectDevices")
 
         # Step 3: Start — triggers permission dialog
-        self._portal_iface.Start(
-            self._session_handle,
-            "",
-            dbus.Dictionary({}, signature="sv"),
-        )
-        self._wait_for_request("Start")
+        start_handle_token = self._make_token("start")
+        start_request_path = self._make_request_path(start_handle_token)
+        start_options = dbus.Dictionary({
+            "handle_token": dbus.String(start_handle_token),
+        }, signature="sv")
+
+        self._portal_iface.Start(session_handle, "", start_options)
+        start_result = self._wait_for_response(start_request_path, "Start")
 
         self._started = True
+        # Save to singleton so subsequent instances reuse this session
+        PortalBackend._shared_session = {
+            "session_handle": self._session_handle,
+            "bus": self._bus,
+            "portal_iface": self._portal_iface,
+            "token_counter": self._token_counter,
+        }
         print("Portal RemoteDesktop session established successfully")
 
-    def _wait_for_create_session(self, request_path: str) -> str:
-        """Wait for CreateSession Response signal and extract session_handle."""
-        loop = GLib.MainLoop()
-        result = {"handle": None, "response": None}
+    def _wait_for_response(self, request_path: str, label: str):
+        """Wait for a portal Request Response signal on a specific path.
 
-        def on_response(connection, sender, path, iface, signal, params):
-            response_code, results_dict = params.unpack()
-            result["response"] = response_code
-            if response_code == 0:
-                handle = str(results_dict.get("session_handle", ""))
-                result["handle"] = handle
+        Uses dbus-python signal subscription on the SAME bus connection
+        that made the method call, with GLib main loop for delivery.
+
+        Returns the session_handle string for CreateSession, None for others.
+        """
+        loop = GLib.MainLoop()
+        result_data = {"response": None, "results": None, "timed_out": False}
+
+        def on_response(*args):
+            # dbus-python signal callback: (response_code, results_dict)
+            response_code = int(args[0])
+            results_dict = args[1] if len(args) > 1 else {}
+            result_data["response"] = response_code
+            result_data["results"] = results_dict
             loop.quit()
 
-        gio_bus = Gio.bus_get_sync(Gio.BusType.SESSION)
-        gio_bus.signal_subscribe(
-            None,
-            "org.freedesktop.portal.Request",
-            "Response",
-            request_path,
-            None,
-            Gio.DBusSignalFlags.NONE,
-            on_response,
-            None,
-        )
-
-        GLib.timeout_add_seconds(30, lambda: loop.quit())
-        loop.run()
-
-        if result["response"] != 0:
-            raise RuntimeError(f"CreateSession denied: response={result['response']}")
-        if not result["handle"]:
-            raise RuntimeError("CreateSession succeeded but no session_handle returned")
-        return result["handle"]
-
-    def _wait_for_request(self, label: str):
-        """Wait for a portal Request Response signal (no data to extract)."""
-        loop = GLib.MainLoop()
-        response_val = [None]
-
-        def on_response(connection, sender, path, iface, signal, params):
-            response_code, _ = params.unpack()
-            response_val[0] = response_code
+        def on_timeout():
+            result_data["timed_out"] = True
             loop.quit()
+            return False
 
-        gio_bus = Gio.bus_get_sync(Gio.BusType.SESSION)
-        gio_bus.signal_subscribe(
-            None,
-            "org.freedesktop.portal.Request",
-            "Response",
-            None,
-            None,
-            Gio.DBusSignalFlags.NONE,
+        # Subscribe to Response signal on the Request object path
+        # Using dbus-python's add_signal_receiver on the SAME bus
+        self._bus.add_signal_receiver(
             on_response,
-            None,
+            signal_name="Response",
+            dbus_interface="org.freedesktop.portal.Request",
+            path=request_path,
         )
 
-        GLib.timeout_add_seconds(30, lambda: loop.quit())
+        GLib.timeout_add_seconds(30, on_timeout)
         loop.run()
 
-        if response_val[0] is None:
+        # Remove signal receiver after done
+        self._bus.remove_signal_receiver(
+            on_response,
+            signal_name="Response",
+            dbus_interface="org.freedesktop.portal.Request",
+            path=request_path,
+        )
+
+        if result_data["timed_out"]:
             raise RuntimeError(f"Portal {label} timed out (30s)")
-        if response_val[0] != 0:
-            raise RuntimeError(f"Portal {label} denied: response={response_val[0]}")
+        if result_data["response"] is None:
+            raise RuntimeError(f"Portal {label} received no response")
+        if result_data["response"] != 0:
+            raise RuntimeError(f"Portal {label} denied: response={result_data['response']}")
+
+        # Return session_handle if present
+        results = result_data.get("results") or {}
+        if "session_handle" in results:
+            handle = results["session_handle"]
+            return str(handle) if not isinstance(handle, str) else handle
+        return None
 
     def _notify_pointer_motion_absolute(self, x: int, y: int):
         self._portal_iface.NotifyPointerMotionAbsolute(
