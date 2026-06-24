@@ -12,25 +12,21 @@ import sys
 import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from PIL import Image
 from lib.task_manager import TaskManager
 from lib.screen_capture import capture_screen
 from lib.coordinate_adapter import CoordinateAdapter
-from lib.platform_detector import detect_platform, get_screen_size, detect_display_server
+from lib.platform_detector import detect_platform, detect_display_server
 from lib.vision_provider import get_provider
-import pyautogui
-
-pyautogui.PAUSE = 0.3
+from lib.input_simulator import get_input_simulator
 
 
 class Player:
     """Replays recorded desktop operations using LLM-driven computer-use pattern.
 
-    For click actions, the primary strategy is Vision Provider (doubao or anthropic)
-    which compares the current screenshot against the reference screenshot to locate
-    the target element. Falls back to coordinate adaptation when vision fails.
-
-    For type actions, text is typed directly via pyautogui.write().
-    For keypress actions, compound keys are decomposed into keyDown/press/keyUp sequences.
+    V3: reads frames/ directory instead of screenshots/, uses semantic
+    description from analysis for Vision prompts. Input simulation via
+    InputSimulator (portal backend on Wayland, pyautogui on X11/Windows).
     """
 
     def __init__(self, task_name, tasks_dir=None, mode="flexible", delay=1.0, provider_name=None):
@@ -40,8 +36,16 @@ class Player:
         self.delay = delay
         self.task_data = self.tm.load_task(task_name)
         self.task_dir = os.path.join(self.tm.tasks_dir, task_name)
-        self.screenshots_dir = os.path.join(self.task_dir, "screenshots")
+        # V3 uses frames/ dir, V2 uses screenshots/ dir
+        frames_dir_name = self.task_data.get("frames_dir", "frames")
+        frames_path = os.path.join(self.task_dir, frames_dir_name)
+        if os.path.isdir(frames_path):
+            self.frames_dir = frames_path
+        else:
+            # V2 compatibility: fallback to screenshots/
+            self.frames_dir = os.path.join(self.task_dir, "screenshots")
         self.vision = get_provider(provider_name)
+        self.sim = get_input_simulator()
         self.results = []
         self.methods_used = {}
 
@@ -52,7 +56,7 @@ class Player:
         if platform != self.task_data["platform"]:
             print(f"Warning: recorded on {self.task_data['platform']}, running on {platform}")
 
-        current_size = get_screen_size()
+        current_size = self.sim.get_screen_size()
         adapter = CoordinateAdapter(
             self.task_data.get("recorded_width", current_size[0]),
             self.task_data.get("recorded_height", current_size[1]),
@@ -92,11 +96,11 @@ class Player:
             return {"step_id": step["id"], "status": "unknown", "action": action}
 
     def _replay_type(self, step):
-        """Type text directly via pyautogui.write()."""
+        """Type text via InputSimulator."""
         text = step.get("text", "")
         if not text:
             return {"step_id": step["id"], "status": "failed", "reason": "no text to type"}
-        pyautogui.write(text, interval=0.05)
+        self.sim.type_text(text, interval=0.05)
         print(f"  Typed: '{text}'")
         return {"step_id": step["id"], "status": "success", "method": "direct_type", "text": text}
 
@@ -113,20 +117,17 @@ class Player:
         """
         current_img = capture_screen()
 
-        # Convert current image to PNG bytes
-        from io import BytesIO
-        buf = BytesIO()
-        current_img.save(buf, format="PNG")
-        current_bytes = buf.getvalue()
+        # Downscale images to max 1280px wide for API efficiency
+        current_img = self._downscale(current_img, 1280)
+        current_bytes = self._img_to_bytes(current_img)
 
-        # Load reference screenshot if it exists, otherwise use current as reference
-        ref_path = os.path.join(self.screenshots_dir, step.get("screenshot", ""))
+        # Load reference frame if it exists
+        ref_path = os.path.join(self.frames_dir, step.get("screenshot", ""))
         if os.path.exists(ref_path):
             from PIL import Image
             ref_img = Image.open(ref_path)
-            buf2 = BytesIO()
-            ref_img.save(buf2, format="PNG")
-            ref_bytes = buf2.getvalue()
+            ref_img = self._downscale(ref_img, 1280)
+            ref_bytes = self._img_to_bytes(ref_img)
         else:
             ref_bytes = current_bytes
 
@@ -136,14 +137,18 @@ class Player:
 
         # Determine provider method name for reporting
         provider_method = type(self.vision).__name__.lower().replace("provider", "_vision")
-        # DoubaoProvider -> "doubao_vision", AnthropicProvider -> "anthropic_vision"
 
         if vision_result.get("found") and vision_result.get("confidence", 0) >= 0.5:
             x = vision_result["x"]
             y = vision_result["y"]
-            # Adapt vision coordinates if screen size differs
-            adapted = adapter.adapt(x, y, current_size[0], current_size[1])
-            pyautogui.click(adapted[0], adapted[1])
+            # Scale vision coordinates from downscaled image back to full screen
+            scale_x = current_size[0] / current_img.width
+            scale_y = current_size[1] / current_img.height
+            full_x = round(x * scale_x)
+            full_y = round(y * scale_y)
+            # Adapt for screen resolution differences
+            adapted = adapter.adapt(full_x, full_y, current_size[0], current_size[1])
+            self.sim.click(adapted[0], adapted[1])
             print(f"  Clicked at ({adapted[0]}, {adapted[1]}) via {provider_method}")
             return {
                 "step_id": step["id"],
@@ -161,7 +166,7 @@ class Player:
                 current_size[0],
                 current_size[1],
             )
-            pyautogui.click(adapted[0], adapted[1])
+            self.sim.click(adapted[0], adapted[1])
             print(f"  Clicked at ({adapted[0]}, {adapted[1]}) via original_coords (fallback)")
             return {
                 "step_id": step["id"],
@@ -183,31 +188,29 @@ class Player:
         if "+" in key:
             keys = key.split("+")
             for k in keys[:-1]:
-                pyautogui.keyDown(k)
-            pyautogui.press(keys[-1])
+                self.sim.key_down(k)
+            self.sim.press_key(keys[-1])
             for k in reversed(keys[:-1]):
-                pyautogui.keyUp(k)
+                self.sim.key_up(k)
             print(f"  Pressed compound: {key}")
         else:
-            pyautogui.press(key)
+            self.sim.press_key(key)
             print(f"  Pressed: {key}")
 
         return {"step_id": step["id"], "status": "success", "method": "keypress", "key": key}
 
     def _build_vision_prompt(self, step):
-        """Build a vision prompt from step description, nearby_text, and position.
+        """Build a vision prompt using semantic description + position hint.
 
-        Combines all available context into a single prompt string that helps
-        the Vision Provider locate the target element on the current screen.
+        V3 uses the description from analysis. V2 (legacy) uses nearby_text.
         """
         parts = []
 
-        # Description is always present
         description = step.get("description", "")
         if description:
             parts.append(description)
 
-        # Nearby text labels provide context for element identification
+        # V2 legacy: nearby text labels provide context
         nearby_text = step.get("nearby_text")
         if nearby_text:
             labels = ", ".join(nearby_text)
@@ -230,6 +233,26 @@ class Player:
                 f"{method}: {count}" for method, count in sorted(self.methods_used.items())
             )
             print(f"Methods used: {{{methods_str}}}")
+
+    @staticmethod
+    def _downscale(img, max_width=1280):
+        """Downscale image to max_width while preserving aspect ratio.
+
+        Returns the downscaled image, or the original if already small enough.
+        """
+        if img.width <= max_width:
+            return img
+        ratio = max_width / img.width
+        new_height = round(img.height * ratio)
+        return img.resize((max_width, new_height), Image.LANCZOS)
+
+    @staticmethod
+    def _img_to_bytes(img):
+        """Convert PIL Image to PNG bytes."""
+        from io import BytesIO
+        buf = BytesIO()
+        img.save(buf, format="PNG")
+        return buf.getvalue()
 
 
 def main():
