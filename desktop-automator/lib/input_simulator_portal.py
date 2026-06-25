@@ -159,12 +159,16 @@ class PortalBackend:
             self._portal_iface = PortalBackend._shared_session["portal_iface"]
             self._started = True
             self._token_counter = PortalBackend._shared_session["token_counter"]
+            self._last_x = PortalBackend._shared_session.get("last_x", 0)
+            self._last_y = PortalBackend._shared_session.get("last_y", 0)
         else:
             self._session_handle = None
             self._bus = None
             self._portal_iface = None
             self._started = False
             self._token_counter = 0
+            self._last_x = 0  # Track assumed cursor position for relative motion
+            self._last_y = 0
 
     def _make_token(self, prefix="desktop_automator"):
         """Generate a unique token for portal request/session handles."""
@@ -215,15 +219,15 @@ class PortalBackend:
         }, signature="sv")
 
         self._portal_iface.CreateSession(options)
-        self._session_handle = self._wait_for_response(request_path, "CreateSession")
+        create_results = self._wait_for_response(request_path, "CreateSession")
 
-        # Extract actual session_handle from result
-        session_handle = self._session_handle
-        # The session_handle should be a path like /org/freedesktop/portal/desktop/session/SENDER/TOKEN
-        # If it came as a dbus variant, convert to string
-        if isinstance(session_handle, dict):
-            # Response was (response_code, results_dict) — extract session_handle from results
-            raise RuntimeError(f"Unexpected session handle format: {session_handle}")
+        # Extract session_handle from CreateSession results
+        session_handle = create_results.get("session_handle", "")
+        if not session_handle:
+            raise RuntimeError("CreateSession succeeded but no session_handle returned")
+        if isinstance(session_handle, dbus.String):
+            session_handle = str(session_handle)
+        self._session_handle = session_handle
 
         # Step 2: SelectDevices — request keyboard (1) and pointer (2)
         select_handle_token = self._make_token("select")
@@ -244,7 +248,7 @@ class PortalBackend:
         }, signature="sv")
 
         self._portal_iface.Start(session_handle, "", start_options)
-        start_result = self._wait_for_response(start_request_path, "Start")
+        start_results = self._wait_for_response(start_request_path, "Start")
 
         self._started = True
         # Save to singleton so subsequent instances reuse this session
@@ -253,6 +257,8 @@ class PortalBackend:
             "bus": self._bus,
             "portal_iface": self._portal_iface,
             "token_counter": self._token_counter,
+            "last_x": self._last_x,
+            "last_y": self._last_y,
         }
         print("Portal RemoteDesktop session established successfully")
 
@@ -307,21 +313,27 @@ class PortalBackend:
         if result_data["response"] != 0:
             raise RuntimeError(f"Portal {label} denied: response={result_data['response']}")
 
-        # Return session_handle if present
-        results = result_data.get("results") or {}
-        if "session_handle" in results:
-            handle = results["session_handle"]
-            return str(handle) if not isinstance(handle, str) else handle
-        return None
+        # Return results dict for caller to extract needed fields
+        return result_data.get("results") or {}
 
     def _notify_pointer_motion_absolute(self, x: int, y: int):
-        self._portal_iface.NotifyPointerMotionAbsolute(
+        """Move pointer to absolute screen coordinates using relative motion.
+
+        NotifyPointerMotionAbsolute fails with "Invalid position" on some
+        compositors, so we use NotifyPointerMotion (relative) instead.
+        We track the assumed cursor position and compute deltas.
+        """
+        # Use relative motion: compute delta from last known position
+        dx = x - self._last_x
+        dy = y - self._last_y
+        self._portal_iface.NotifyPointerMotion(
             self._session_handle,
             dbus.Dictionary({}, signature="sv"),
-            dbus.UInt32(0),  # stream id
-            dbus.Double(x),
-            dbus.Double(y),
+            dbus.Double(dx),
+            dbus.Double(dy),
         )
+        self._last_x = x
+        self._last_y = y
 
     def _notify_pointer_button(self, button: int, state: int):
         """button: 0=left, 1=middle, 2=right. state: 0=release, 1=press."""
