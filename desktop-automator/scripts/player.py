@@ -11,6 +11,11 @@ import os
 import sys
 import time
 
+# Must set DBusGMainLoop BEFORE any dbus.SessionBus() calls
+# so that D-Bus signals are delivered via GLib main loop
+from dbus.mainloop.glib import DBusGMainLoop
+DBusGMainLoop(set_as_default=True)
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from PIL import Image
 from lib.task_manager import TaskManager
@@ -55,6 +60,12 @@ class Player:
         platform = detect_platform()
         if platform != self.task_data["platform"]:
             print(f"Warning: recorded on {self.task_data['platform']}, running on {platform}")
+
+        # Establish portal session early (before any screen capture)
+        # so permission dialog appears upfront, not mid-replay
+        if hasattr(self.sim, '_ensure_session'):
+            print("Establishing input session...")
+            self.sim._ensure_session()
 
         current_size = self.sim.get_screen_size()
         adapter = CoordinateAdapter(

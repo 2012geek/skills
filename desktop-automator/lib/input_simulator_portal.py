@@ -15,9 +15,8 @@ import time
 import uuid
 
 try:
-    from dbus.mainloop.glib import DBusGMainLoop
-    DBusGMainLoop(set_as_default=True)
     import dbus
+    from dbus.mainloop.glib import DBusGMainLoop
     import gi
     gi.require_version("GLib", "2.0")
     from gi.repository import GLib
@@ -189,7 +188,13 @@ class PortalBackend:
         return f"/org/freedesktop/portal/desktop/session/{self._sender_name()}/{session_token}"
 
     def _ensure_session(self):
-        """Establish a RemoteDesktop session if not already active."""
+        """Establish a RemoteDesktop session using a single GLib main loop.
+
+        Pre-subscribes to all three request paths before calling any portal
+        methods. This avoids the problem of add_signal_receiver not working
+        inside GLib main loop callbacks. Then triggers CreateSession and
+        uses state machine callbacks to drive SelectDevices and Start.
+        """
         if self._started:
             return
 
@@ -208,50 +213,106 @@ class PortalBackend:
             portal_obj, "org.freedesktop.portal.RemoteDesktop"
         )
 
-        # Step 1: CreateSession with tokens
+        # Generate all tokens upfront
         session_token = self._make_token("session")
-        handle_token = self._make_token("create")
-        request_path = self._make_request_path(handle_token)
+        create_ht = self._make_token("create")
+        select_ht = self._make_token("select")
+        start_ht = self._make_token("start")
 
-        options = dbus.Dictionary({
-            "session_handle_token": dbus.String(session_token),
-            "handle_token": dbus.String(handle_token),
-        }, signature="sv")
+        create_rp = self._make_request_path(create_ht)
+        select_rp = self._make_request_path(select_ht)
+        start_rp = self._make_request_path(start_ht)
 
-        self._portal_iface.CreateSession(options)
-        create_results = self._wait_for_response(request_path, "CreateSession")
+        # State machine: tracks session handle and which phase we're in
+        state = {"phase": 0, "session_handle": None, "error": None}
 
-        # Extract session_handle from CreateSession results
-        session_handle = create_results.get("session_handle", "")
-        if not session_handle:
-            raise RuntimeError("CreateSession succeeded but no session_handle returned")
-        if isinstance(session_handle, dbus.String):
-            session_handle = str(session_handle)
-        self._session_handle = session_handle
+        def on_create(response_code, results_dict):
+            if int(response_code) != 0:
+                state["error"] = f"CreateSession denied: {int(response_code)}"
+                loop.quit()
+                return
+            results = dict(results_dict)
+            handle = results.get("session_handle", "")
+            state["session_handle"] = str(handle) if isinstance(handle, dbus.String) else handle
+            state["phase"] = 1
+            print("  CreateSession OK")
+            # Trigger SelectDevices — already subscribed
+            self._portal_iface.SelectDevices(
+                state["session_handle"],
+                dbus.Dictionary({
+                    "devices": dbus.UInt32(1 | 2 | 4),
+                    "handle_token": dbus.String(select_ht),
+                }, signature="sv"),
+            )
 
-        # Step 2: SelectDevices — request keyboard (1) and pointer (2)
-        select_handle_token = self._make_token("select")
-        select_request_path = self._make_request_path(select_handle_token)
-        select_options = dbus.Dictionary({
-            "devices": dbus.UInt32(1 | 2),  # 1=keyboard, 2=pointer
-            "handle_token": dbus.String(select_handle_token),
-        }, signature="sv")
+        def on_select(response_code, results_dict):
+            if int(response_code) != 0:
+                state["error"] = f"SelectDevices denied: {int(response_code)}"
+                loop.quit()
+                return
+            state["phase"] = 2
+            print("  SelectDevices OK — permission dialog will appear, click Allow then Share")
+            # Trigger Start — already subscribed
+            self._portal_iface.Start(
+                state["session_handle"],
+                "",
+                dbus.Dictionary({
+                    "handle_token": dbus.String(start_ht),
+                }, signature="sv"),
+            )
 
-        self._portal_iface.SelectDevices(session_handle, select_options)
-        self._wait_for_response(select_request_path, "SelectDevices")
+        def on_start(response_code, results_dict):
+            if int(response_code) != 0:
+                state["error"] = f"Start denied: {int(response_code)}"
+                loop.quit()
+                return
+            state["phase"] = 3
+            print("  Start OK — session fully established")
+            loop.quit()
 
-        # Step 3: Start — triggers permission dialog
-        start_handle_token = self._make_token("start")
-        start_request_path = self._make_request_path(start_handle_token)
-        start_options = dbus.Dictionary({
-            "handle_token": dbus.String(start_handle_token),
-        }, signature="sv")
+        loop = GLib.MainLoop()
 
-        self._portal_iface.Start(session_handle, "", start_options)
-        start_results = self._wait_for_response(start_request_path, "Start")
+        # Pre-subscribe to ALL three request paths BEFORE any calls
+        # This is critical — add_signal_receiver doesn't work inside loop callbacks
+        self._bus.add_signal_receiver(
+            on_create, signal_name="Response",
+            dbus_interface="org.freedesktop.portal.Request", path=create_rp)
+        self._bus.add_signal_receiver(
+            on_select, signal_name="Response",
+            dbus_interface="org.freedesktop.portal.Request", path=select_rp)
+        self._bus.add_signal_receiver(
+            on_start, signal_name="Response",
+            dbus_interface="org.freedesktop.portal.Request", path=start_rp)
 
+        # Trigger phase 0: CreateSession
+        self._portal_iface.CreateSession(
+            dbus.Dictionary({
+                "session_handle_token": dbus.String(session_token),
+                "handle_token": dbus.String(create_ht),
+            }, signature="sv"),
+        )
+
+        # Timeout: 120s to allow time for permission dialog interaction
+        GLib.timeout_add_seconds(120, lambda: loop.quit())
+        loop.run()
+
+        # Cleanup signal receivers
+        for cb, rp in [(on_create, create_rp), (on_select, select_rp), (on_start, start_rp)]:
+            try:
+                self._bus.remove_signal_receiver(
+                    cb, signal_name="Response",
+                    dbus_interface="org.freedesktop.portal.Request", path=rp)
+            except ValueError:
+                pass
+
+        # Check for errors
+        if state["error"]:
+            raise RuntimeError(state["error"])
+        if state["phase"] < 3:
+            raise RuntimeError(f"Portal session incomplete: phase={state['phase']}")
+
+        self._session_handle = state["session_handle"]
         self._started = True
-        # Save to singleton so subsequent instances reuse this session
         PortalBackend._shared_session = {
             "session_handle": self._session_handle,
             "bus": self._bus,
@@ -261,60 +322,6 @@ class PortalBackend:
             "last_y": self._last_y,
         }
         print("Portal RemoteDesktop session established successfully")
-
-    def _wait_for_response(self, request_path: str, label: str):
-        """Wait for a portal Request Response signal on a specific path.
-
-        Uses dbus-python signal subscription on the SAME bus connection
-        that made the method call, with GLib main loop for delivery.
-
-        Returns the session_handle string for CreateSession, None for others.
-        """
-        loop = GLib.MainLoop()
-        result_data = {"response": None, "results": None, "timed_out": False}
-
-        def on_response(*args):
-            # dbus-python signal callback: (response_code, results_dict)
-            response_code = int(args[0])
-            results_dict = args[1] if len(args) > 1 else {}
-            result_data["response"] = response_code
-            result_data["results"] = results_dict
-            loop.quit()
-
-        def on_timeout():
-            result_data["timed_out"] = True
-            loop.quit()
-            return False
-
-        # Subscribe to Response signal on the Request object path
-        # Using dbus-python's add_signal_receiver on the SAME bus
-        self._bus.add_signal_receiver(
-            on_response,
-            signal_name="Response",
-            dbus_interface="org.freedesktop.portal.Request",
-            path=request_path,
-        )
-
-        GLib.timeout_add_seconds(30, on_timeout)
-        loop.run()
-
-        # Remove signal receiver after done
-        self._bus.remove_signal_receiver(
-            on_response,
-            signal_name="Response",
-            dbus_interface="org.freedesktop.portal.Request",
-            path=request_path,
-        )
-
-        if result_data["timed_out"]:
-            raise RuntimeError(f"Portal {label} timed out (30s)")
-        if result_data["response"] is None:
-            raise RuntimeError(f"Portal {label} received no response")
-        if result_data["response"] != 0:
-            raise RuntimeError(f"Portal {label} denied: response={result_data['response']}")
-
-        # Return results dict for caller to extract needed fields
-        return result_data.get("results") or {}
 
     def _notify_pointer_motion_absolute(self, x: int, y: int):
         """Move pointer to absolute screen coordinates using relative motion.
