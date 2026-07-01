@@ -39,3 +39,14 @@ build/
 # Additional debug files
 *.diagram.html
 *.optimized.md
+
+# Slidev build/test artifacts
+html-presentation/.cache/
+html-presentation/.test-images/
+html-presentation/.test-integration/
+html-presentation/assets/
+html-presentation/slidev-exported.pdf
+html-presentation/404.html
+html-presentation/_redirects
+html-presentation/slides-test.md
+html-presentation/test-cli.md
