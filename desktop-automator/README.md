@@ -1,18 +1,16 @@
-# Desktop Automator V2
+# Desktop Automator V3
 
-LLM-driven desktop automation with semantic recording and Vision Provider replay.
+截屏→Vision 架构：零权限、跨平台、无需事件拦截。
 
 ## Architecture
 
-V2 uses a 5-layer architecture:
+V3 uses a three-stage screenshot→Vision analysis architecture:
 
-| Layer | Purpose |
+| Stage | Purpose |
 |-------|---------|
-| Screen Capture | Cross-platform screenshots (X11/Wayland/Win32) with `mss` + `grim` |
-| Input Monitoring | Wayland: kernel-level `/dev/input/eventX` via ctypes; X11: pynput hooks |
-| Semantic Recording | Merge raw events into semantic steps with nearby text annotations |
-| Computer-Use Replay | Screenshot→Vision→execute→verify loop for adaptive replay |
-| Vision Provider | doubao-seed-2.0-pro (default) or Anthropic Claude Vision for UI understanding |
+| **Record** | Periodic screenshot collection (1fps), no event interception |
+| **Analyze** | Vision Provider batch analysis of frame pairs to detect operations |
+| **Replay** | Vision re-location using semantic description + reference frame |
 
 ### Vision Providers
 
@@ -23,65 +21,67 @@ V2 uses a 5-layer architecture:
 
 ## Features
 
-- Semantic recording: consecutive keypresses merged into ~15 steps (not 206 raw events)
-- Vision Provider replay: visual understanding replaces fragile OCR matching
-- Computer-use loop: iterative screenshot analysis and action execution
-- OSD floating window: live recording feedback with step count, elapsed time, and stop button
+- Zero permissions: no sudo, no udev rules, no `/dev/input` access needed
+- Cross-platform: same code on Wayland, X11, Windows, macOS
+- 1fps screenshot recording: no event interception, works everywhere
+- Vision Provider analysis: semantic understanding replaces OCR
+- Semantic description replay: Vision re-locates elements by description, not coordinates
+- Pixel difference detection: skip unchanged frames during analysis (saves API calls)
+- OSD floating window: live recording feedback with frame count and elapsed time
 - Signal handling: SIGTERM/SIGINT safely saves recording data before exit
-- Recording status: `.recording` file enables external status queries (`/desktop-automator status`)
-- Cross-platform: X11, Wayland, and Windows
+- Recording status: `.recording` file enables external status queries
 - Resolution-adaptive coordinate scaling
-- Strict and flexible error handling modes
-- Dual input backend: evdev (Wayland kernel-level) + pynput (X11 fallback)
+- Step merging: consecutive type actions merged into single steps
 
 ## Quick Start
 
 ### Install dependencies
 
 ```bash
-# System: Tesseract OCR (optional, for fallback)
-sudo apt-get install tesseract-ocr tesseract-ocr-chi-sim  # Linux X11
-
-# Wayland support
+# Wayland screenshot support
 sudo apt-get install grim  # Wayland screenshot tool
 # Or on GNOME: gnome-screenshot
 
-# One-time setup (Wayland input access + Python packages)
-sudo bash setup.sh
-
-# Or manually:
+# Python packages
 pip install -r requirements.txt
 ```
+
+No Tesseract, pynput, or udev setup needed!
 
 ### Record a task
 
 ```bash
 python3 scripts/recorder.py --name my-task
-# An OSD floating window appears showing recording state (REC indicator, step count, elapsed time)
-# Stop recording by: clicking "Stop Recording" button, pressing Esc, or Ctrl+C
+# OSD shows REC indicator, elapsed time, and frame count
+# Stop by: clicking Stop button, pressing Esc, or Ctrl+C
+```
+
+### Analyze recorded frames
+
+```bash
+python3 scripts/analyzer.py --task my-task --provider doubao
+# Vision Provider analyzes frame pairs and identifies operations
+# task.json updated: status="raw" → "analyzed", steps populated
+```
+
+### Replay a task
+
+```bash
+python3 scripts/player.py --task my-task --provider doubao
 ```
 
 ### Check recording status
 
 ```bash
 python3 scripts/task_manager.py status
-# Shows: active recording (task name, steps, elapsed time) or "No recording in progress"
-```
-
-### Replay a task
-
-```bash
-# Default: doubao Vision Provider
-python3 scripts/player.py --task my-task --provider doubao
-
-# Anthropic Vision Provider
-python3 scripts/player.py --task my-task --provider anthropic --use-computer-use
+# Shows: active recording (task name, frames, elapsed time) or "No recording in progress"
 ```
 
 ### Use as Claude Code Skill
 
 ```
 /desktop-automator record my-task
+/desktop-automator analyze my-task
 /desktop-automator replay my-task
 /desktop-automator status
 /desktop-automator list
@@ -89,62 +89,68 @@ python3 scripts/player.py --task my-task --provider anthropic --use-computer-use
 /desktop-automator delete my-task
 ```
 
-## Wayland Support
+## Comparison with V2
 
-V2 adds full Wayland support alongside X11:
-
-- **Screen capture**: X11 uses `mss`; Wayland uses `grim` (or `gnome-screenshot`)
-- **Input monitoring**: X11 uses `pynput` (X11 global hooks); Wayland uses kernel-level `/dev/input/eventX` via pure Python ctypes/struct (no C dependencies)
-- The recorder detects the display server at startup and automatically selects the appropriate backend
-- Wayland input monitoring requires read access to `/dev/input/eventX` — run `sudo bash setup.sh` once to configure udev rules
-
-## Performance Comparison
-
-| Metric | V1 | V2 |
-|--------|----|----|
-| Recorded steps | 206 raw events | ~15 semantic steps |
-| Replay strategy | OCR-first, fragile | Vision Provider, robust |
-| OCR failures | Common (broken matching) | Rare (Vision understands context) |
-| Typical replay time | 2-3 minutes | ~30 seconds |
-| Wayland support | None | Full (grim + evdev input + gnome-screenshot) |
-| Recording feedback | Terminal only | OSD window + status command |
-| Data safety | Lost on interruption | SIGTERM/SIGINT saves data |
+| Dimension | V2 (Event Interception) | V3 (Screenshot→Vision) |
+|-----------|------------------------|------------------------|
+| Wayland support | Requires sudo + udev + evdev | Works as normal user |
+| Windows support | Needs separate implementation | Same code |
+| Mouse precision | Estimated, has drift | Vision directly identifies |
+| Keyboard input | Needs key mapping tables | Vision sees what appears on screen |
+| Permission needs | Root-level | Normal user |
+| Dependencies | pynput, tesseract, opencv | None of those |
+| Recording feedback | Shows step count | Shows frame count + time |
+| Analysis delay | None (real-time) | A few seconds post-recording |
 
 ## Task Format
 
-V2 `task.json` includes semantic fields:
+V3 `task.json` has a two-stage lifecycle:
+
+### After recording (status="raw")
 
 ```json
 {
-  "name": "my-task",
+  "name": "打开谷歌",
   "platform": "linux",
   "display_server": "wayland",
+  "status": "raw",
+  "frames_count": 15,
+  "frames_dir": "frames",
+  "steps": []
+}
+```
+
+### After analysis (status="analyzed")
+
+```json
+{
+  "name": "打开谷歌",
+  "platform": "linux",
+  "display_server": "wayland",
+  "status": "analyzed",
+  "frames_count": 15,
+  "frames_dir": "frames",
   "steps": [
     {
       "id": 1,
       "action": "click",
-      "position": {"x": 500, "y": 300},
-      "nearby_text": ["Save"],
-      "text": null,
-      "key": null,
-      "description": "click left at (500,300)",
-      "screenshot": "step-001.png"
+      "position": {"x": 282, "y": 65},
+      "description": "点击 Chrome 图标",
+      "screenshot": "frame-002.png"
     },
     {
       "id": 2,
       "action": "type",
-      "position": null,
-      "text": "Hello World",
-      "key": null,
-      "description": "type 'Hello World'",
-      "screenshot": "step-002.png"
+      "text": "天气",
+      "description": "输入 '天气'",
+      "screenshot": "frame-006.png"
     }
   ]
 }
 ```
 
-Key new fields:
-- `display_server`: "x11" or "wayland" — detected at record time
-- `nearby_text`: Text near the click location for Vision matching
-- `text`: The typed text or button label
-- `description`: Human-readable step description
+Key differences from V2:
+- `status`: "raw" or "analyzed" — lifecycle indicator
+- `frames_dir`/`frames_count`: frame-based, not step-based
+- `description`: Chinese semantic description (not raw coordinates)
+- No `nearby_text` — Vision Provider provides semantic understanding

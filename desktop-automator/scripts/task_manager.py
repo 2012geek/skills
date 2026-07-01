@@ -2,17 +2,20 @@ import argparse
 import json
 import sys
 import os
-import time
 from datetime import datetime, timezone
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from lib.task_manager import TaskManager
 from lib.recording_status import RecordingStatus
+from scripts.analyzer import Analyzer
+
 
 def main():
     parser = argparse.ArgumentParser(description="Manage recorded desktop tasks")
-    parser.add_argument("command", choices=["list", "info", "delete", "status"])
-    parser.add_argument("--name", default=None, help="Task name (for info/delete)")
+    parser.add_argument("command", choices=["list", "info", "delete", "status", "analyze"])
+    parser.add_argument("--name", default=None, help="Task name (for info/delete/analyze)")
     parser.add_argument("--tasks-dir", default=None, help="Custom tasks directory")
+    parser.add_argument("--provider", choices=["doubao", "anthropic"], default=None,
+                        help="Vision provider for analyze")
     args = parser.parse_args()
     tm = TaskManager(args.tasks_dir)
 
@@ -23,7 +26,10 @@ def main():
             return
         for name in tasks:
             info = tm.get_task_info(name)
-            print(f"  {name} ({info['step_count']} steps, {info['platform']}/{info['display_server']})")
+            status = info.get("status", "unknown")
+            steps = info.get("step_count", 0)
+            frames = info.get("frames_count", "?")
+            print(f"  {name} (status={status}, {steps} steps, {frames} frames, {info['platform']}/{info['display_server']})")
     elif args.command == "info":
         if not args.name:
             print("Error: --name required for info command")
@@ -59,17 +65,24 @@ def main():
                     elapsed = "unknown"
             print("Recording in progress:")
             print(f"  Task: {result['task_name']}")
-            print(f"  Steps: {result.get('steps_so_far', 0)}")
+            print(f"  Frames: {result.get('frames_so_far', 0)}")
             print(f"  Elapsed: {elapsed}")
             print(f"  PID: {result.get('pid', 'N/A')}")
             print(f"  Display server: {result.get('display_server', 'unknown')}")
         else:
             print("WARNING: Incomplete recording found!")
             print(f"  Task: {result['task_name']}")
-            print(f"  Steps recorded: {result.get('steps_so_far', 0)}")
+            print(f"  Frames captured: {result.get('frames_so_far', 0)}")
             print(f"  PID: {result.get('pid', 'N/A')} (dead)")
             print("  Run: python3 scripts/task_manager.py delete --name " + result['task_name'])
             print("  to clean up the incomplete recording.")
+    elif args.command == "analyze":
+        if not args.name:
+            print("Error: --name required for analyze command")
+            return
+        analyzer = Analyzer(args.name, args.tasks_dir, args.provider)
+        analyzer.analyze()
+
 
 if __name__ == "__main__":
     main()

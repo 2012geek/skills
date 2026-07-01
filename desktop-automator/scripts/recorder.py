@@ -1,4 +1,11 @@
 # scripts/recorder.py
+"""V3 screenshot collector — captures 1fps frames, no event interception.
+
+Records desktop operations by taking periodic screenshots (1 per second),
+saving them as frame-NNN.png in the task's frames/ directory. No input
+event interception — works on Wayland, X11, and any platform without
+special permissions.
+"""
 import argparse
 import json
 import os
@@ -9,66 +16,14 @@ import time
 from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from lib.platform_detector import detect_platform, detect_display_server
+from lib.platform_detector import detect_platform, detect_display_server, get_screen_size
 from lib.screen_capture import capture_screen, save_screenshot
 from lib.recording_status import RecordingStatus
 from lib.osd_window import OSDWindow
-from scripts.ocr_engine import OcrEngine
-
-
-MODIFIER_KEYS = frozenset({
-    "shift", "shift_l", "shift_r",
-    "ctrl", "ctrl_l", "ctrl_r",
-    "alt", "alt_l", "alt_r",
-    "cmd", "cmd_l", "cmd_r",
-    "super", "super_l", "super_r",
-    "win", "win_l", "win_r",
-})
-
-SPACE_KEYS = frozenset({"space"})
-
-
-class KeyMerger:
-    """Merges consecutive printable character keypresses into a single 'type' event."""
-
-    def __init__(self):
-        self._buffer = ""
-
-    def add_key(self, key_str):
-        flushed_event = None
-        special_event = None
-
-        if key_str in SPACE_KEYS:
-            self._buffer += " "
-        elif len(key_str) == 1 and key_str.isprintable():
-            self._buffer += key_str
-        elif key_str in MODIFIER_KEYS:
-            flushed_event = self._flush_buffer()
-            special_event = {"action": "keypress", "key": key_str}
-        else:
-            flushed_event = self._flush_buffer()
-            special_event = {"action": "keypress", "key": key_str}
-
-        return (flushed_event, special_event)
-
-    def flush(self):
-        return self._flush_buffer()
-
-    def _flush_buffer(self):
-        if not self._buffer:
-            return None
-        text = self._buffer
-        self._buffer = ""
-        return {"action": "type", "text": text}
 
 
 class Recorder:
-    """Records desktop operations with semantic merging, OSD feedback,
-    signal handling, and status file tracking.
-
-    On Wayland: uses EvdevInputListener (kernel-level /dev/input/eventX).
-    On X11: uses pynput (X11 global input hooks).
-    """
+    """V3 recorder: periodic screenshot collector at 1fps."""
 
     def __init__(self, task_name, tasks_dir=None):
         if tasks_dir is None:
@@ -76,290 +31,109 @@ class Recorder:
             tasks_dir = os.path.join(base, "tasks")
         self.task_name = task_name
         self.task_dir = os.path.join(tasks_dir, task_name)
-        self.screenshots_dir = os.path.join(self.task_dir, "screenshots")
+        self.frames_dir = os.path.join(self.task_dir, "frames")
         self.tasks_dir = tasks_dir
-        self.steps = []
-        self.step_counter = 0
+        self.frame_counter = 0
         self.recording = True
         self.start_time = time.time()
-        self._input_listeners = []
-        self.key_merger = KeyMerger()
-        self.ocr_engine = OcrEngine()
         self._recording_status = RecordingStatus(task_name, tasks_dir)
         self._osd = None
-        self._lock = threading.RLock()
+        self._lock = threading.Lock()
 
     def start(self):
-        os.makedirs(self.screenshots_dir, exist_ok=True)
+        os.makedirs(self.frames_dir, exist_ok=True)
 
         display_server = detect_display_server()
+        screen_size = get_screen_size()
 
-        # Create status file
         self._recording_status.create(display_server)
 
-        # Register signal handlers
         signal.signal(signal.SIGTERM, self._signal_handler)
         signal.signal(signal.SIGINT, self._signal_handler)
-
-        # Start input listeners based on display server
-        self._start_input_listeners(display_server)
 
         print(f"Recording task '{self.task_name}' on {display_server}...")
         print("Press Esc to stop, or click Stop button in OSD window.")
 
-        # Show OSD window on main thread (runs mainloop, replaces listener.join())
+        # Start capture loop in background thread
+        capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
+        capture_thread.start()
+
+        # Show OSD on main thread (runs mainloop)
         self._osd = OSDWindow(
-            step_count=0,
+            frame_count=0,
             start_time=self.start_time,
             stop_callback=self._osd_stop,
         )
         self._osd.show()
 
-    def _start_input_listeners(self, display_server):
-        """Start appropriate input listeners for the display server."""
-        if display_server == "wayland":
-            self._start_wayland_listeners()
-        else:
-            self._start_x11_listeners()
+    def _capture_loop(self):
+        """Main capture loop: screenshot every 1 second until stopped."""
+        while self.recording:
+            try:
+                img = capture_screen()
+                with self._lock:
+                    if not self.recording:
+                        break
+                    self.frame_counter += 1
+                    frame_name = f"frame-{self.frame_counter:03d}.png"
+                    frame_path = os.path.join(self.frames_dir, frame_name)
+                    count = self.frame_counter
 
-    def _start_wayland_listeners(self):
-        """Start EvdevInputListener for Wayland (kernel-level input events)."""
-        from lib.input_listener import EvdevInputListener
+                save_screenshot(img, frame_path)
+                print(f"  Frame {count} saved")
 
-        listener = EvdevInputListener(
-            on_click=self._on_evdev_click,
-            on_key_press=self._on_evdev_key_press,
-            on_key_release=self._on_evdev_key_release,
-        )
-        try:
-            listener.start()
-            self._input_listeners.append(listener)
-            print("  Using evdev (Wayland kernel-level input monitoring)")
-        except RuntimeError as e:
-            print(f"  WARNING: evdev failed: {e}")
-            print("  Falling back to pynput (may not work on Wayland)")
-            self._start_x11_listeners()
+                if self._osd:
+                    self._osd.update_frames(count)
+                self._recording_status.update_frames(count)
 
-    def _start_x11_listeners(self):
-        """Start pynput listeners for X11."""
-        from pynput import mouse, keyboard
+            except Exception as e:
+                print(f"  Capture error: {e}")
 
-        mouse_listener = mouse.Listener(on_click=self._on_pynput_click)
-        key_listener = keyboard.Listener(
-            on_press=self._on_pynput_key_press,
-            on_release=self._on_pynput_key_release,
-        )
-        mouse_listener.start()
-        key_listener.start()
-        self._input_listeners.extend([mouse_listener, key_listener])
-        print("  Using pynput (X11 input hooks)")
+            # Wait 1 second between captures
+            time.sleep(1)
 
     def _osd_stop(self):
-        """Callback from OSD stop button. Called on main thread."""
         self.stop()
 
     def _signal_handler(self, signum, frame):
-        """Handle SIGTERM/SIGINT — save data and close OSD before exiting."""
         print(f"\nReceived signal {signum}, saving recording data...")
         self.stop()
         if self._osd and self._osd.root:
             self._osd.root.after(0, self._osd._on_stop_click)
 
     def stop(self):
-        """Stop recording, flush buffer, save task, remove status file."""
         with self._lock:
             if not self.recording:
                 return
             self.recording = False
+            count = self.frame_counter
 
-            # Flush any remaining accumulated text
-            flushed_event = self.key_merger.flush()
-            if flushed_event is not None:
-                self._record_step_from_event(flushed_event)
+        self._save_task(count)
+        self._recording_status.remove()
 
-            # Stop listeners
-            for listener in self._input_listeners:
-                if hasattr(listener, "stop"):
-                    listener.stop()
-
-            # Save task data
-            self._save_task()
-
-            # Remove status file
-            self._recording_status.remove()
-
-    # --- pynput callbacks (X11) ---
-    def _on_pynput_click(self, x, y, button, pressed):
-        """Handle mouse click from pynput. button is pynput.mouse.Button enum."""
-        if pressed:
-            self._handle_click(x, y, button.name)
-
-    def _on_pynput_key_press(self, key):
-        """Handle key press from pynput. key is pynput.keyboard.Key or KeyCode."""
-        if key == keyboard.Key.esc:
-            if self._osd and self._osd.root:
-                self._osd.root.after(0, self._osd_stop)
-            else:
-                self.stop()
-            return
-
-    def _on_pynput_key_release(self, key):
-        """Handle key release from pynput. key is pynput.keyboard.Key or KeyCode."""
-        try:
-            key_str = key.char if hasattr(key, "char") and key.char else key.name
-        except AttributeError:
-            key_str = str(key)
-
-        if key_str in ("esc", "Esc"):
-            return
-
-        self._handle_key(key_str)
-
-    # --- evdev callbacks (Wayland) ---
-    def _on_evdev_click(self, x, y, button_name, pressed):
-        """Handle mouse click from EvdevInputListener. button_name is a string."""
-        if pressed:
-            self._handle_click(x, y, button_name)
-
-    def _on_evdev_key_press(self, key_name):
-        """Handle key press from EvdevInputListener. key_name is a string."""
-        if key_name == "esc":
-            if self._osd and self._osd.root:
-                self._osd.root.after(0, self._osd_stop)
-            else:
-                self.stop()
-            return
-
-    def _on_evdev_key_release(self, key_name):
-        """Handle key release from EvdevInputListener. key_name is a string."""
-        if key_name == "esc":
-            return
-
-        self._handle_key(key_name)
-
-    # --- Unified handlers ---
-    def _handle_click(self, x, y, button_name):
-        """Unified click handler for both pynput and evdev."""
-        if not self.recording:
-            return
-
-        flushed_event = self.key_merger.flush()
-        if flushed_event is not None:
-            self._record_step_from_event(flushed_event)
-
-        position = {"x": x, "y": y}
-        description = f"click {button_name} at ({x},{y})"
-        self._record_step(
-            action="click",
-            position=position,
-            key=None,
-            text=None,
-            description=description,
-        )
-
-    def _handle_key(self, key_str):
-        """Unified key handler for both pynput and evdev."""
-        if not self.recording:
-            return
-
-        flushed_event, special_event = self.key_merger.add_key(key_str)
-
-        if flushed_event is not None:
-            self._record_step_from_event(flushed_event)
-        if special_event is not None:
-            self._record_step_from_event(special_event)
-
-    def _record_step_from_event(self, event):
-        action = event["action"]
-        text = event.get("text")
-        key = event.get("key")
-        if action == "type":
-            description = f"type '{text}'"
-        elif action == "keypress":
-            description = f"key press {key}"
-        else:
-            description = action
-
-        self._record_step(
-            action=action,
-            position=None,
-            key=key,
-            text=text,
-            description=description,
-        )
-
-    def _record_step(self, action, position=None, key=None, text=None, description=""):
-        # Screen capture and OCR are slow — do outside lock to avoid blocking listeners
-        img = capture_screen()
-
-        nearby_text = None
-        if position is not None:
-            nearby_text = self._extract_nearby_text(img, position)
-
-        # Only hold the lock for brief shared-state mutations
-        with self._lock:
-            self.step_counter += 1
-            screenshot_name = f"step-{self.step_counter:03d}.png"
-            step = {
-                "id": self.step_counter,
-                "action": action,
-                "position": position,
-                "screenshot": screenshot_name,
-                "key": key,
-                "text": text,
-                "description": description,
-                "nearby_text": nearby_text,
-            }
-            self.steps.append(step)
-            step_counter = self.step_counter
-
-        # I/O and UI updates outside lock
-        screenshot_path = os.path.join(self.screenshots_dir, screenshot_name)
-        save_screenshot(img, screenshot_path)
-        print(f"  Step {step_counter}: {description}")
-
-        if self._osd:
-            self._osd.update_steps(step_counter)
-        self._recording_status.update_steps(step_counter)
-
-    def _extract_nearby_text(self, screenshot_img, position, radius=200, max_results=5):
-        blocks = self.ocr_engine.extract_text_blocks(screenshot_img)
-        if not blocks:
-            return None
-
-        px = position["x"]
-        py = position["y"]
-        nearby = []
-        for b in blocks:
-            bx = b["x"] + b["width"] // 2
-            by = b["y"] + b["height"] // 2
-            dist = abs(bx - px) + abs(by - py)
-            if dist <= radius:
-                nearby.append({"text": b["text"], "dist": dist})
-
-        if not nearby:
-            return None
-
-        nearby.sort(key=lambda item: item["dist"])
-        return [item["text"] for item in nearby[:max_results]]
-
-    def _save_task(self):
+    def _save_task(self, frames_count):
+        screen_size = get_screen_size()
         task_data = {
             "name": self.task_name,
             "platform": detect_platform(),
             "display_server": detect_display_server(),
+            "recorded_width": screen_size[0],
+            "recorded_height": screen_size[1],
             "created": datetime.now(timezone.utc).isoformat(),
-            "steps": self.steps,
+            "status": "raw",
+            "frames_count": frames_count,
+            "frames_dir": "frames",
+            "steps": [],
         }
         task_path = os.path.join(self.task_dir, "task.json")
         with open(task_path, "w") as f:
             json.dump(task_data, f, indent=2)
         print(f"\nRecording saved: {self.task_dir}")
-        print(f"  {len(self.steps)} steps recorded")
+        print(f"  {frames_count} frames captured")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Record desktop operations")
+    parser = argparse.ArgumentParser(description="Record desktop operations (V3 screenshot collector)")
     parser.add_argument("--name", required=True, help="Task name for the recording")
     parser.add_argument("--tasks-dir", default=None, help="Custom tasks directory")
     args = parser.parse_args()

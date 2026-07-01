@@ -7,9 +7,8 @@ from datetime import datetime, timezone
 class RecordingStatus:
     """Manages .recording status file for tracking active recording state.
 
-    The .recording file lives at tasks/<task-name>/.recording and contains
-    task_name, pid, started timestamp, display_server, and steps_so_far.
-    It enables external status queries and residual recording detection.
+    V3 tracks frames_so_far instead of steps_so_far (steps come from
+    analysis, not from recording).
     """
 
     def __init__(self, task_name, tasks_dir=None):
@@ -22,45 +21,36 @@ class RecordingStatus:
         self.status_path = os.path.join(self.task_dir, ".recording")
 
     def create(self, display_server=None):
-        """Create .recording file with initial state (steps_so_far=0)."""
         os.makedirs(self.task_dir, exist_ok=True)
         data = {
             "task_name": self.task_name,
             "pid": os.getpid(),
             "started": datetime.now(timezone.utc).isoformat(),
             "display_server": display_server or "unknown",
-            "steps_so_far": 0,
+            "frames_so_far": 0,
         }
         with open(self.status_path, "w") as f:
             json.dump(data, f, indent=2)
 
-    def update_steps(self, count):
-        """Update steps_so_far in the status file."""
+    def update_frames(self, count):
         if not os.path.exists(self.status_path):
             return
         try:
             with open(self.status_path, "r") as f:
                 data = json.load(f)
-            data["steps_so_far"] = count
+            data["frames_so_far"] = count
             with open(self.status_path, "w") as f:
                 json.dump(data, f, indent=2)
         except (json.JSONDecodeError, OSError):
             return
 
     def remove(self):
-        """Delete the .recording file (called when recording ends successfully)."""
         if os.path.exists(self.status_path):
             os.remove(self.status_path)
 
     @staticmethod
     def check_active(tasks_dir=None):
-        """Scan tasks_dir for any .recording file and return status dict.
-
-        Returns None if no active recording found. Returns dict with
-        pid_alive=True/False if a .recording file exists. Note: returns
-        only the first match found; multiple simultaneous recordings are
-        not supported.
-        """
+        """Scan tasks_dir for any .recording file and return status dict."""
         if tasks_dir is None:
             base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             tasks_dir = os.path.join(base, "tasks")

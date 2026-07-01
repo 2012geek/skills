@@ -25,20 +25,11 @@ logger = logging.getLogger(__name__)
 
 @runtime_checkable
 class VisionProvider(Protocol):
-    """Protocol for vision-based element location providers.
+    """Protocol for vision-based element location and frame analysis providers.
 
-    All providers must implement locate_element which takes:
-    - current_bytes: screenshot of the current screen state (PNG bytes)
-    - reference_bytes: screenshot where the target element was visible (PNG bytes)
-    - description: human-readable description of the target element
-
-    Returns a dict with at least:
-    - found: bool — whether the element was located
-    - x: int — pixel x-coordinate of element center (0 if not found)
-    - y: int — pixel y-coordinate of element center (0 if not found)
-    - confidence: float — confidence score 0..1 (0 if not found)
-    - method: str — detection method used (e.g. "vision", "ocr")
-    - description: str — description of what was found or why it wasn't
+    All providers must implement:
+    - locate_element: find an element on current screen by comparing with reference
+    - analyze_frame_pair: detect what operation happened between two consecutive frames
     """
 
     def locate_element(
@@ -46,6 +37,14 @@ class VisionProvider(Protocol):
         current_bytes: bytes,
         reference_bytes: bytes,
         description: str,
+    ) -> dict:
+        ...
+
+    def analyze_frame_pair(
+        self,
+        prev_bytes: bytes,
+        curr_bytes: bytes,
+        frame_index: int,
     ) -> dict:
         ...
 
@@ -95,19 +94,7 @@ class DoubaoProvider:
         reference_bytes: bytes,
         description: str,
     ) -> dict:
-        """Locate an element on the current screen by comparing with a reference.
-
-        Sends both screenshots to doubao along with a prompt requesting JSON
-        coordinates of the described element.
-
-        Args:
-            current_bytes: PNG bytes of the current screen state.
-            reference_bytes: PNG bytes of the reference screen where element was visible.
-            description: Human-readable description of the target element.
-
-        Returns:
-            Dict with keys: found, x, y, confidence, method, description.
-        """
+        """Locate an element on the current screen by comparing with a reference."""
         if not self.api_key:
             return {
                 "found": False,
@@ -118,11 +105,9 @@ class DoubaoProvider:
                 "description": "No API key configured for DoubaoProvider",
             }
 
-        # Encode images as base64
         current_b64 = base64.b64encode(current_bytes).decode("utf-8")
         reference_b64 = base64.b64encode(reference_bytes).decode("utf-8")
 
-        # Determine image dimensions for prompt context
         try:
             current_img = Image.open(BytesIO(current_bytes))
             current_dims = f"{current_img.width}x{current_img.height}"
@@ -130,6 +115,147 @@ class DoubaoProvider:
             current_dims = "unknown"
 
         return self._call_api(current_b64, reference_b64, description, current_dims)
+
+    def analyze_frame_pair(
+        self,
+        prev_bytes: bytes,
+        curr_bytes: bytes,
+        frame_index: int,
+    ) -> dict:
+        """Analyze two consecutive frames to detect what operation happened.
+
+        Returns a dict with:
+        - action: "click", "type", "keypress", "scroll", "none"
+        - position: {"x": int, "y": int} or null
+        - text: str or null (for type actions)
+        - key: str or null (for keypress actions)
+        - description: str — human-readable description of the change
+        - confidence: float — 0..1
+        """
+        if not self.api_key:
+            return {
+                "action": "none",
+                "position": None,
+                "text": None,
+                "key": None,
+                "description": "No API key configured",
+                "confidence": 0.0,
+            }
+
+        prev_b64 = base64.b64encode(prev_bytes).decode("utf-8")
+        curr_b64 = base64.b64encode(curr_bytes).decode("utf-8")
+
+        prompt = (
+            f"Compare these two consecutive screenshots from a desktop recording.\n"
+            f"The first (frame {frame_index}) was taken before the second (frame {frame_index + 1}).\n\n"
+            f"Identify what the user did between these two frames. Possible actions:\n"
+            f"- click: user clicked on something (provide x,y pixel coordinates of where they clicked)\n"
+            f"- type: user typed text (provide the text they typed)\n"
+            f"- keypress: user pressed a key like Enter, Tab, Escape, Ctrl+C etc. (provide the key name)\n"
+            f"- scroll: user scrolled (provide direction)\n"
+            f"- none: no significant change visible\n\n"
+            f"Respond ONLY with a JSON object:\n"
+            f"- \"action\": one of click/type/keypress/scroll/none\n"
+            f"- \"position\": {{\"x\": int, \"y\": int}} for click (null for others)\n"
+            f"- \"text\": string for type action (null for others)\n"
+            f"- \"key\": string for keypress action (null for others)\n"
+            f"- \"description\": brief Chinese description of what happened\n"
+            f"- \"confidence\": your confidence from 0.0 to 1.0\n"
+        )
+
+        try:
+            client = self._get_client()
+            response = client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/png;base64,{prev_b64}"},
+                            },
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/png;base64,{curr_b64}"},
+                            },
+                            {"type": "text", "text": prompt},
+                        ],
+                    }
+                ],
+                max_tokens=1024,
+            )
+
+            raw_text = response.choices[0].message.content
+            logger.debug("DoubaoProvider analyze response: %s", raw_text[:300])
+            return self._parse_analysis_response(raw_text)
+
+        except Exception as exc:
+            logger.error("DoubaoProvider analyze call failed: %s", exc)
+            return {
+                "action": "none",
+                "position": None,
+                "text": None,
+                "key": None,
+                "description": f"API error: {exc}",
+                "confidence": 0.0,
+            }
+
+    def _parse_analysis_response(self, raw_text: str) -> dict:
+        """Parse JSON from frame analysis response.
+
+        Strategy: try direct parse, then code blocks, then brace matching.
+        Unlike locate_element, analysis responses have different keys (action, position, text, etc).
+        """
+        # Strategy 1: direct parse
+        try:
+            parsed = json.loads(raw_text)
+            if "action" in parsed:
+                return _normalize_analysis_result(parsed)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        # Strategy 2: extract from code blocks
+        for pattern in [
+            re.search(r"```json\s*\n?(.*?)\n?```", raw_text, re.DOTALL),
+            re.search(r"```\s*\n?(.*?)\n?```", raw_text, re.DOTALL),
+        ]:
+            if pattern:
+                try:
+                    parsed = json.loads(pattern.group(1).strip())
+                    if "action" in parsed:
+                        return _normalize_analysis_result(parsed)
+                except (json.JSONDecodeError, TypeError):
+                    continue
+
+        # Strategy 3: balanced braces
+        brace_start = raw_text.find("{")
+        if brace_start >= 0:
+            depth = 0
+            for i in range(brace_start, len(raw_text)):
+                if raw_text[i] == "{":
+                    depth += 1
+                elif raw_text[i] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        candidate = raw_text[brace_start : i + 1]
+                        try:
+                            parsed = json.loads(candidate)
+                            if "action" in parsed:
+                                return _normalize_analysis_result(parsed)
+                        except (json.JSONDecodeError, TypeError):
+                            break
+
+        # Strategy 4: unparseable
+        logger.warning("Could not parse DoubaoProvider analysis response: %s", raw_text[:200])
+        return {
+            "action": "none",
+            "position": None,
+            "text": None,
+            "key": None,
+            "description": f"Parse error: {raw_text[:200]}",
+            "confidence": 0.0,
+        }
 
     def _call_api(
         self,
@@ -301,18 +427,7 @@ class AnthropicProvider:
         reference_bytes: bytes,
         description: str,
     ) -> dict:
-        """Locate an element using Anthropic Claude Vision API.
-
-        Sends both screenshots with a prompt requesting JSON coordinates.
-
-        Args:
-            current_bytes: PNG bytes of the current screen state.
-            reference_bytes: PNG bytes of the reference screen.
-            description: Human-readable description of the target element.
-
-        Returns:
-            Dict with keys: found, x, y, confidence, method, description.
-        """
+        """Locate an element using Anthropic Claude Vision API."""
         if not self.api_key:
             return {
                 "found": False,
@@ -326,7 +441,6 @@ class AnthropicProvider:
         current_b64 = base64.b64encode(current_bytes).decode("utf-8")
         reference_b64 = base64.b64encode(reference_bytes).decode("utf-8")
 
-        # Determine image dimensions
         try:
             current_img = Image.open(BytesIO(current_bytes))
             current_dims = f"{current_img.width}x{current_img.height}"
@@ -334,6 +448,138 @@ class AnthropicProvider:
             current_dims = "unknown"
 
         return self._call_api(current_b64, reference_b64, description, current_dims)
+
+    def analyze_frame_pair(
+        self,
+        prev_bytes: bytes,
+        curr_bytes: bytes,
+        frame_index: int,
+    ) -> dict:
+        """Analyze two consecutive frames to detect what operation happened."""
+        if not self.api_key:
+            return {
+                "action": "none",
+                "position": None,
+                "text": None,
+                "key": None,
+                "description": "No API key configured",
+                "confidence": 0.0,
+            }
+
+        prev_b64 = base64.b64encode(prev_bytes).decode("utf-8")
+        curr_b64 = base64.b64encode(curr_bytes).decode("utf-8")
+
+        prompt = (
+            "Compare these two consecutive screenshots from a desktop recording.\n"
+            f"The first (frame {frame_index}) was taken before the second (frame {frame_index + 1}).\n\n"
+            "Identify what the user did between these two frames. Possible actions:\n"
+            "- click: user clicked on something (provide x,y pixel coordinates)\n"
+            "- type: user typed text (provide the text)\n"
+            "- keypress: user pressed a key like Enter, Tab, Escape, Ctrl+C (provide the key name)\n"
+            "- scroll: user scrolled (provide direction)\n"
+            "- none: no significant change visible\n\n"
+            "Respond ONLY with a JSON object:\n"
+            "- \"action\": one of click/type/keypress/scroll/none\n"
+            "- \"position\": {\"x\": int, \"y\": int} for click (null for others)\n"
+            "- \"text\": string for type action (null for others)\n"
+            "- \"key\": string for keypress action (null for others)\n"
+            "- \"description\": brief Chinese description of what happened\n"
+            "- \"confidence\": your confidence from 0.0 to 1.0\n"
+        )
+
+        try:
+            client = self._get_client()
+            message = client.messages.create(
+                model=self.model,
+                max_tokens=1024,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": "image/png",
+                                    "data": prev_b64,
+                                },
+                            },
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": "image/png",
+                                    "data": curr_b64,
+                                },
+                            },
+                            {"type": "text", "text": prompt},
+                        ],
+                    }
+                ],
+            )
+
+            raw_text = message.content[0].text
+            logger.debug("AnthropicProvider analyze response: %s", raw_text[:300])
+            return self._parse_analysis_response(raw_text)
+
+        except Exception as exc:
+            logger.error("AnthropicProvider analyze call failed: %s", exc)
+            return {
+                "action": "none",
+                "position": None,
+                "text": None,
+                "key": None,
+                "description": f"API error: {exc}",
+                "confidence": 0.0,
+            }
+
+    def _parse_analysis_response(self, raw_text: str) -> dict:
+        """Parse JSON from frame analysis response."""
+        # Try direct parse first
+        try:
+            parsed = json.loads(raw_text)
+            return _normalize_analysis_result(parsed)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        # Try code blocks
+        for pattern in [
+            re.search(r"```json\s*\n?(.*?)\n?```", raw_text, re.DOTALL),
+            re.search(r"```\s*\n?(.*?)\n?```", raw_text, re.DOTALL),
+        ]:
+            if pattern:
+                try:
+                    parsed = json.loads(pattern.group(1).strip())
+                    return _normalize_analysis_result(parsed)
+                except (json.JSONDecodeError, TypeError):
+                    continue
+
+        # Try balanced braces
+        brace_start = raw_text.find("{")
+        if brace_start >= 0:
+            depth = 0
+            for i in range(brace_start, len(raw_text)):
+                if raw_text[i] == "{":
+                    depth += 1
+                elif raw_text[i] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        candidate = raw_text[brace_start : i + 1]
+                        try:
+                            parsed = json.loads(candidate)
+                            return _normalize_analysis_result(parsed)
+                        except (json.JSONDecodeError, TypeError):
+                            break
+
+        logger.warning("Could not parse Anthropic analysis response: %s", raw_text[:200])
+        return {
+            "action": "none",
+            "position": None,
+            "text": None,
+            "key": None,
+            "description": f"Parse error: {raw_text[:200]}",
+            "confidence": 0.0,
+        }
 
     def _call_api(
         self,
@@ -476,6 +722,25 @@ def _normalize_result(result: dict) -> dict:
         "confidence": float(result.get("confidence", 0.0)),
         "method": str(result.get("method", "vision")),
         "description": str(result.get("description", "")),
+    }
+
+
+def _normalize_analysis_result(result: dict) -> dict:
+    """Normalize a frame analysis result to ensure all required keys are present.
+
+    Guarantees: action, position, text, key, description, confidence.
+    """
+    action = str(result.get("action", "none"))
+    pos = result.get("position")
+    if pos is not None and isinstance(pos, dict):
+        pos = {"x": int(pos.get("x", 0)), "y": int(pos.get("y", 0))}
+    return {
+        "action": action,
+        "position": pos,
+        "text": result.get("text") if action == "type" else None,
+        "key": result.get("key") if action == "keypress" else None,
+        "description": str(result.get("description", "")),
+        "confidence": float(result.get("confidence", 0.5)),
     }
 
 

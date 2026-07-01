@@ -342,8 +342,17 @@ class PortalBackend:
         self._last_x = x
         self._last_y = y
 
+    # evdev button codes (required by portal API, NOT X11 button numbers)
+    BTN_LEFT = 272   # 0x110
+    BTN_RIGHT = 273  # 0x111
+    BTN_MIDDLE = 274 # 0x112
+
     def _notify_pointer_button(self, button: int, state: int):
-        """button: 0=left, 1=middle, 2=right. state: 0=release, 1=press."""
+        """Press or release a pointer button using evdev codes.
+
+        button: evdev code (272=BTN_LEFT, 273=BTN_RIGHT, 274=BTN_MIDDLE)
+        state: 1=press, 0=release
+        """
         self._portal_iface.NotifyPointerButton(
             self._session_handle,
             dbus.Dictionary({}, signature="sv"),
@@ -375,8 +384,8 @@ class PortalBackend:
         """Click at screen coordinates: move → press → release."""
         self._ensure_session()
         self._notify_pointer_motion_absolute(x, y)
-        self._notify_pointer_button(0, 1)  # BTN_LEFT press
-        self._notify_pointer_button(0, 0)  # BTN_LEFT release
+        self._notify_pointer_button(self.BTN_LEFT, 1)  # BTN_LEFT press
+        self._notify_pointer_button(self.BTN_LEFT, 0)  # BTN_LEFT release
 
     def type_text(self, text: str, interval: float = 0.05) -> None:
         """Type text character by character with optional interval."""

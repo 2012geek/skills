@@ -1,6 +1,7 @@
 import json
 import os
 
+
 class TaskManager:
     def __init__(self, tasks_dir=None):
         if tasks_dir is None:
@@ -32,7 +33,9 @@ class TaskManager:
         data = self.load_task(name)
         return {
             "name": data["name"],
+            "status": data.get("status", "unknown"),
             "step_count": len(data["steps"]),
+            "frames_count": data.get("frames_count", 0),
             "platform": data.get("platform"),
             "display_server": data.get("display_server"),
             "created": data.get("created"),
