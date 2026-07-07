@@ -34,6 +34,7 @@ Every command returns `{ ok: true|false, ... }` JSON. If `ok: false`, read the `
 |---------|------|---------|
 | `init` | none | `{ ok, configPath }` |
 | `config` | none | `{ ok, projects: [{owner, repo, ...}] }` |
+| `status` | none | `{ ok, projects: [{owner, repo, findings, botIssues, remoteIssues, remoteIssueList, fixes, prs, lastScanAt}] }` |
 | `state-get` | `--project owner/repo` | `{ ok, findings, issues, fixes, prs, lastScanAt }` |
 | `state-add-finding` | `--project owner/repo --finding '<JSON>'` | `{ ok, id: "f-auto-N" }` |
 | `state-update-finding` | `--project owner/repo --id f1 --status confirmed` | `{ ok }` |
@@ -99,20 +100,18 @@ Then tell the user to edit `~/.gitcode-bot/config.json` with their GitCode token
 
 ## Pipeline: /gitcode-bot status
 
-1. Load config:
+Run the status command (combines config, local state, and remote Issues in one call):
 ```bash
-node gitcode-bot/scripts/cli.js config
+node gitcode-bot/scripts/cli.js status
 ```
 
-2. For each project, get state:
-```bash
-node gitcode-bot/scripts/cli.js state-get --project owner/repo
-```
+Parse the JSON output. Print a summary table using all fields:
+| Project | Findings | Bot Issues | Remote Issues | Fixes | PRs | Last Scan |
+|---------|----------|------------|---------------|-------|-----|-----------|
+| owner/repo | N | N | N | N | N | timestamp |
 
-3. Print a summary table:
-| Project | Findings | Issues | PRs | Last Scan |
-|---------|----------|--------|-----|-----------|
-| owner/repo | N | N | N | timestamp |
+If `remoteIssues > 0`, list the remote Issues below the table:
+- #N: title (state)
 
 ---
 

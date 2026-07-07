@@ -80,6 +80,43 @@ async function handleCommand(command, args) {
       break;
     }
 
+    // ─── Status ───────────────────────────────────────────
+    case 'status': {
+      try {
+        const config = configManager.load();
+        const stateStore = new StateStore(STATE_DIR);
+        const projectStatuses = [];
+
+        for (const proj of config.projects) {
+          const state = stateStore.load(proj.owner, proj.repo);
+          const api = createApi(proj);
+          const issueManager = new IssueManager(api);
+          let remoteIssues = [];
+          try {
+            remoteIssues = await issueManager.listOpenIssues(proj.owner, proj.repo);
+          } catch (e) {
+            // API may fail, continue with empty list
+          }
+
+          projectStatuses.push({
+            owner: proj.owner,
+            repo: proj.repo,
+            findings: state.findings.length,
+            botIssues: state.issues.length,
+            remoteIssues: remoteIssues.length,
+            remoteIssueList: remoteIssues.map(i => ({ number: i.number, title: i.title, state: i.state })),
+            fixes: state.fixes.length,
+            prs: state.prs.length,
+            lastScanAt: state.lastScanAt
+          });
+        }
+        output({ ok: true, projects: projectStatuses });
+      } catch (e) {
+        outputError(e);
+      }
+      break;
+    }
+
     // ─── State ─────────────────────────────────────────────
     case 'state-get': {
       const { project } = args;
@@ -291,7 +328,7 @@ async function handleCommand(command, args) {
     }
 
     default:
-      outputError(new Error(`Unknown command: ${command}. Available: init, config, state-get, state-add-finding, state-update-finding, state-add-issue, state-update-issue, state-set-scan-time, state-add-fix, state-add-pr, dedup, issue-create, issue-list, issue-close, issue-comment, issue-check-dup, wait-check, test-discover, test-run, git-clone, git-branch, git-push, pr-create`));
+      outputError(new Error(`Unknown command: ${command}. Available: init, config, status, state-get, state-add-finding, state-update-finding, state-add-issue, state-update-issue, state-set-scan-time, state-add-fix, state-add-pr, dedup, issue-create, issue-list, issue-close, issue-comment, issue-check-dup, wait-check, test-discover, test-run, git-clone, git-branch, git-push, pr-create`));
   }
 }
 
