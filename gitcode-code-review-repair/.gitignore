@@ -16,6 +16,9 @@ npm-debug.log*
 *.tmp
 .temp-*
 
+# xauth_token cache (browser login token for nested replies)
+.xauth-cache.json
+
 # OS files
 .DS_Store
 Thumbs.db

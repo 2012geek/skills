@@ -58,15 +58,19 @@ Requires `config.json` in project root with:
 3. **Calculate Unresolved**: `unresolved = total - resolved`
 4. **If All Resolved**: Show success message and exit
 5. **Fetch Unresolved Comments**: Get each review comment with file, line, and content
-6. **Generate Fixes** (for each comment):
+6. **Get xauth_token**: Obtain browser OAuth token for nested reply support
+   - Uses cached token (valid 24h) if available
+   - Otherwise opens browser for manual login
+   - If unavailable, falls back to standalone replies
+7. **Generate Fixes** (for each comment):
    - Use Claude to analyze code and review comment
    - Generate fix or detect flawed review logic
    - Prepare reply with fix details
-7. **Apply Fixes**:
+8. **Apply Fixes**:
    - Edit/modify files based on fix suggestions
-   - Reply to each review comment with solution
-8. **Commit**: Use `git commit --amend` to update commit
-9. **Summary**: Output table with all fixes and links
+   - Reply to each review comment with solution (nested when xauth_token available)
+9. **Commit**: Use `git commit --amend` to update commit
+10. **Summary**: Output table with all fixes and links
 
 ## Reply Format
 
@@ -117,6 +121,17 @@ The main repair script is located at:
 - Review generated fixes before allowing them to be applied
 - Use `--dry-run` flag to preview changes without modifying files
 - Check the summary table for links to each review comment reply
+
+## Nested Reply Support (xauth_token)
+
+GitCode's public API v5 creates standalone comments (not nested under DiffNote discussions). For **truly nested replies**, the internal API requires `xauth_token` (browser OAuth token, not personal access token).
+
+The workflow automatically handles this:
+1. First run: Browser opens for manual login → xauth_token extracted and cached
+2. Subsequent runs: Cached token used silently (valid 24 hours)
+3. If unavailable: Replies work but are standalone (not nested)
+
+**Manual token setup**: Run `node scripts/xauth-extractor.js` separately, or copy `xauth_token` from browser DevTools > Application > Local Storage > gitcode.com
 
 ## Troubleshooting
 

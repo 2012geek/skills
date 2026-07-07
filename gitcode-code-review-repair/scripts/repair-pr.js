@@ -662,6 +662,23 @@ async function main() {
       return;
     }
 
+    // Get xauth_token for nested reply support
+    console.log('\n🔑 获取嵌套回复所需认证 / Getting auth for nested replies...');
+    let xauthToken = null;
+    try {
+      const xauthExtractorPath = path.join(__dirname, 'xauth-extractor.js');
+      const { getXauthToken } = require(xauthExtractorPath);
+      xauthToken = await getXauthToken();
+      if (xauthToken) {
+        console.log('  ✓ xauth_token ready for nested replies');
+      } else {
+        console.log('  ⚠ No xauth_token available, replies will be standalone');
+      }
+    } catch (error) {
+      console.log(`  ⚠ xauth_token setup failed: ${error.message}`);
+      console.log('  回复将使用公开API（非嵌套）/ Replies will use public API (not nested)');
+    }
+
     // Checkout PR repository
     await checkoutPR(owner, repo, prNumber, config);
 
@@ -860,9 +877,12 @@ async function main() {
           replyBody = formatLogicReply(fix, comment);
         }
 
-        // Step 3: Reply to comment
+        // Step 3: Reply to comment (prefer nested reply when available)
         console.log('\n💬 步骤 4/4: 回复检视意见 / Step 4/4: Replying to comment...');
-        const replyResult = await api.replyToComment(prNumber, comment.id, replyBody);
+        const replyResult = await api.replyToComment(prNumber, comment.id, replyBody, {
+          discussion_id: comment.discussion_id,
+          xauth_token: xauthToken
+        });
         console.log(`  ✓ 回复已发送 / Reply sent to comment #${comment.id}`);
 
         results.push({

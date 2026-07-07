@@ -1,129 +1,9 @@
 /**
  * GitCode API Repair Extension
- * Extends GitCodeAPI with review comment repair functionality
- *
- * This file includes both the base GitCodeAPI class and the extended
- * GitCodeAPIRepair class for a self-contained implementation.
+ * Extends GitCodeAPI from @skills/gitcode-sdk with review comment repair functionality
  */
 
-const https = require('https');
-
-/**
- * GitCode API Base Class
- * Provides core GitCode API functionality
- */
-class GitCodeAPI {
-  constructor(config) {
-    this.config = config.gitcode;
-    this.headers = {
-      'Authorization': `Bearer ${this.config.token}`,
-      'Content-Type': 'application/json',
-      'User-Agent': 'GitCode-Review-Repair/1.0'
-    };
-  }
-
-  /**
-   * Send HTTP request to GitCode API
-   */
-  async request(endpoint, options = {}) {
-    const url = new URL(`${this.config.baseUrl}${endpoint}`);
-
-    const requestOptions = {
-      hostname: url.hostname,
-      port: 443,
-      path: url.pathname + url.search,
-      method: options.method || 'GET',
-      headers: {
-        ...this.headers,
-        ...options.headers
-      }
-    };
-
-    if (options.body) {
-      requestOptions.headers['Content-Length'] = Buffer.byteLength(options.body);
-    }
-
-    return new Promise((resolve, reject) => {
-      const req = https.request(requestOptions, (res) => {
-        let data = '';
-        res.on('data', (chunk) => { data += chunk; });
-        res.on('end', () => {
-          try {
-            const jsonData = JSON.parse(data);
-            if (res.statusCode !== 200 && res.statusCode !== 201) {
-              reject(new Error(`API request failed: ${res.statusCode} - ${JSON.stringify(jsonData)}`));
-            } else {
-              resolve(jsonData);
-            }
-          } catch (e) {
-            resolve({ data });
-          }
-        });
-      });
-
-      req.on('error', reject);
-
-      if (options.body) {
-        req.write(options.body);
-      }
-
-      req.end();
-    });
-  }
-
-  /**
-   * Get PR comments
-   */
-  async getPRComments(prNumber) {
-    return await this.request(
-      `/api/v5/repos/${this.config.owner}/${this.config.repo}/pulls/${prNumber}/comments`
-    );
-  }
-
-  /**
-   * Get PR files
-   */
-  async getPRFiles(prNumber) {
-    return await this.request(
-      `/api/v5/repos/${this.config.owner}/${this.config.repo}/pulls/${prNumber}/files`
-    );
-  }
-
-  /**
-   * Get file content from repository
-   */
-  async getFileContent(filePath, ref = 'HEAD') {
-    const encodedPath = encodeURIComponent(filePath);
-    const data = await this.request(
-      `/api/v5/repos/${this.config.owner}/${this.config.repo}/contents/${encodedPath}?ref=${ref}`
-    );
-
-    if (data.content) {
-      return Buffer.from(data.content, 'base64').toString('utf-8');
-    }
-    return '';
-  }
-
-  /**
-   * Submit PR comment (general comment, not inline)
-   */
-  async submitPRComment(prNumber, body) {
-    return await this.request(
-      `/api/v5/repos/${this.config.owner}/${this.config.repo}/pulls/${prNumber}/comments`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ body })
-      }
-    );
-  }
-
-  /**
-   * Get PR URL
-   */
-  getPRUrl(prNumber) {
-    return `https://gitcode.com/${this.config.owner}/${this.config.repo}/pull/${prNumber}`;
-  }
-}
+const { GitCodeAPI } = require('@skills/gitcode-sdk');
 
 /**
  * Extended GitCode API for repair operations
@@ -133,6 +13,7 @@ class GitCodeAPIRepair extends GitCodeAPI {
     super(config);
     this.anthropicApiKey = config.anthropic?.apiKey;
     this.anthropicBaseUrl = config.anthropic?.baseUrl;
+    this._projectId = null;
   }
 
   /**
@@ -683,6 +564,7 @@ class GitCodeAPIRepair extends GitCodeAPI {
           if (unresolved.length > 0) {
             return unresolved.map(n => ({
               id: n.id,
+              discussion_id: n.discussion_id,
               path: n.diff_file || n.file_path,
               position: n.position,
               line: n.new_line || n.old_line,
@@ -710,9 +592,25 @@ class GitCodeAPIRepair extends GitCodeAPI {
    * @param {number} prNumber - PR number
    * @param {number} commentId - Original comment ID to reply to
    * @param {string} replyBody - Reply content
+   * @param {Object} options - Optional: { discussion_id, xauth_token } for nested reply
    * @returns {Promise<Object>} Reply result
    */
-  async replyToComment(prNumber, commentId, replyBody) {
+  async replyToComment(prNumber, commentId, replyBody, options = {}) {
+    const { discussion_id, xauth_token } = options;
+
+    // Prefer nested reply via internal API when both are available
+    if (discussion_id && xauth_token) {
+      console.log('  尝试使用内部API嵌套回复 / Trying nested reply via internal API...');
+      try {
+        const result = await this.submitNestedReply(prNumber, discussion_id, replyBody, xauth_token);
+        console.log('  ✓ 内部API嵌套回复成功 / Nested reply successful');
+        return result;
+      } catch (nestedError) {
+        console.log(`  ⚠ 嵌套回复失败 / Nested reply failed: ${nestedError.message}`);
+        console.log('  回退到公开API / Falling back to public API...');
+      }
+    }
+
     console.log('  尝试使用API回复 / Trying API reply...');
 
     // GitCode API: Create a new comment as a reply
@@ -737,6 +635,99 @@ class GitCodeAPIRepair extends GitCodeAPI {
       // Fall back to browser-based posting
       return await this._postReplyViaBrowser(prNumber, commentId, replyBody);
     }
+  }
+
+  /**
+   * Submit nested reply within a DiffNote discussion via GitCode internal API
+   * Requires xauth_token (browser OAuth token, not personal access token)
+   * @param {number} prNumber - PR number
+   * @param {string} discussionId - Discussion thread ID from DiffNote
+   * @param {string} body - Reply content
+   * @param {string} xauthToken - xauth_token obtained via browser login
+   * @returns {Promise<Object>} Created note (type: DiffNote, is_reply: true)
+   */
+  async submitNestedReply(prNumber, discussionId, body, xauthToken) {
+    if (!xauthToken) {
+      throw new Error('xauth_token required for nested reply');
+    }
+    if (!discussionId) {
+      throw new Error('discussion_id required for nested reply');
+    }
+
+    // Fetch project_id if not cached
+    let projectId = this._projectId;
+    if (!projectId) {
+      const repoInfo = await this.request(
+        `/api/v5/repos/${this.config.owner}/${this.config.repo}`
+      );
+      projectId = repoInfo.id;
+      this._projectId = projectId;
+    }
+
+    const urlPath = `/issuepr/api/v1/projects/${projectId}/merge_requests/${prNumber}/discussions/${discussionId}/notes`;
+    const payload = JSON.stringify({ body });
+    const bodyLen = Buffer.byteLength(payload);
+    const zlib = require('zlib');
+    const https = require('https');
+
+    return new Promise((resolve, reject) => {
+      const options = {
+        hostname: 'gitcode.com',
+        port: 443,
+        path: urlPath,
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json, text/plain, */*',
+          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+          'Content-Type': 'application/json',
+          'Content-Length': bodyLen,
+          'Host': 'gitcode.com',
+          'Origin': 'https://gitcode.com',
+          'Referer': `https://gitcode.com/${this.config.owner}/${this.config.repo}/pull/${prNumber}`,
+          'Sec-Ch-Ua': '"Chromium";v="130", "Not?A_Brand";v="99"',
+          'Sec-Ch-Ua-Mobile': '?0',
+          'Sec-Ch-Ua-Platform': '"Linux"',
+          'Sec-Fetch-Dest': 'empty',
+          'Sec-Fetch-Mode': 'cors',
+          'Sec-Fetch-Site': 'same-origin',
+          'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+          'Authorization': `Bearer ${xauthToken}`,
+          'Cookie': `access_token=${xauthToken}; xauth_token=${xauthToken}`,
+        }
+      };
+
+      const req = https.request(options, (res) => {
+        let chunks = [];
+        res.on('data', chunk => chunks.push(chunk));
+        res.on('end', () => {
+          const raw = Buffer.concat(chunks);
+          let text = raw.toString('utf-8');
+          try {
+            if (res.headers['content-encoding'] === 'gzip') text = zlib.gunzipSync(raw).toString('utf-8');
+            else if (res.headers['content-encoding'] === 'br') text = zlib.brotliDecompressSync(raw).toString('utf-8');
+          } catch(e) {}
+
+          try {
+            const json = JSON.parse(text);
+            if (res.statusCode >= 400) {
+              reject(new Error(`Internal API error: ${res.statusCode} - ${json.error_message || JSON.stringify(json)}`));
+            } else {
+              resolve(json);
+            }
+          } catch(e) {
+            if (res.statusCode >= 400) {
+              reject(new Error(`Internal API error: ${res.statusCode} - ${text.substring(0, 200)}`));
+            } else {
+              resolve({ raw: text });
+            }
+          }
+        });
+      });
+
+      req.on('error', reject);
+      req.write(payload);
+      req.end();
+    });
   }
 
   /**
