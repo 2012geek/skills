@@ -1,0 +1,11 @@
+{
+  "projects": [
+    {
+      "owner": "someorg",
+      "repo": "someproject"
+    }
+  ],
+  "bot": {
+    "maxRetries": 3
+  }
+}

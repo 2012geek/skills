@@ -1,0 +1,16 @@
+{
+  "projects": [
+    {
+      "owner": "openeuler",
+      "repo": "lerobot_ros2",
+      "gitcodeToken": "project-token"
+    },
+    {
+      "owner": "someorg",
+      "repo": "someproject"
+    }
+  ],
+  "bot": {
+    "gitcodeToken": "shared-bot-token"
+  }
+}

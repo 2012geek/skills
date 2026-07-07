@@ -16,9 +16,16 @@ fix-*.sh
 
 # Plan documents (temporary)
 PLAN-*.md
+**/docs/plans/
 
 # Node modules
 node_modules/
+
+# gitcode-bot state files (runtime, not source)
+.gitcode-bot/
+
+# Jest cache
+jest-cache/
 
 # Build outputs
 dist/
