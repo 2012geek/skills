@@ -5,13 +5,16 @@
  * 自动修复 GitCode MR 的 CI 失败问题
  */
 
-const { GitCodeAPI } = require('../lib/gitcode-api.js');
+const { GitCodeAPI, ConfigLoader } = require('@skills/gitcode-sdk');
 const path = require('path');
-const fs = require('fs');
 
 // 加载配置
-const configPath = path.join(process.cwd(), 'config.json');
-if (!fs.existsSync(configPath)) {
+const loader = new ConfigLoader({ configPath: path.join(process.cwd(), 'config.json') });
+let config, api;
+try {
+  config = loader.loadRaw();
+  api = new GitCodeAPI({ gitcode: config.gitcode });
+} catch (e) {
   console.error('❌ 配置文件不存在: config.json');
   console.error('请在项目根目录创建 config.json:');
   console.error(JSON.stringify({
@@ -24,9 +27,6 @@ if (!fs.existsSync(configPath)) {
   }, null, 2));
   process.exit(1);
 }
-
-const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-const api = new GitCodeAPI({ gitcode: config.gitcode });
 
 /**
  * 解析 MR 编号或 URL

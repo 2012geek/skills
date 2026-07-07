@@ -19,12 +19,10 @@
 const fs = require('fs').promises;
 const path = require('path');
 
-const { GitCodeAPI } = require('../lib/gitcode-api');
-const { CommentFormatter } = require('../lib/comment-formatter');
-const { AgentRunner } = require('../lib/agent-runner');
+const { GitCodeAPI, CommentFormatter, AgentRunner, ConfigLoader } = require('@skills/gitcode-sdk');
 
-// 配置文件路径
 const CONFIG_PATH = path.join(process.cwd(), 'config.json');
+
 const DEFAULT_CONFIG = {
   gitcode: {
     token: '',
@@ -38,6 +36,28 @@ const DEFAULT_CONFIG = {
   }
 };
 
+function loadConfig() {
+  const loader = new ConfigLoader({ configPath: CONFIG_PATH });
+  try {
+    const userConfig = loader.loadRaw();
+    return {
+      ...DEFAULT_CONFIG,
+      ...userConfig,
+      gitcode: {
+        ...DEFAULT_CONFIG.gitcode,
+        ...(userConfig.gitcode || {})
+      },
+      codeReview: {
+        ...DEFAULT_CONFIG.codeReview,
+        ...(userConfig.codeReview || {})
+      }
+    };
+  } catch (e) {
+    console.log('⚠️  未找到配置文件，使用默认配置');
+    return DEFAULT_CONFIG;
+  }
+}
+
 /**
  * GitCode PR 审查器
  */
@@ -45,7 +65,7 @@ class GitCodeReviewer {
   constructor(config) {
     this.api = new GitCodeAPI(config);
     this.formatter = new CommentFormatter(config);
-    this.runner = new AgentRunner(config);
+    this.runner = new AgentRunner(path.join(__dirname, '..', 'agents'));
     this.config = config;
   }
 
@@ -789,27 +809,7 @@ async function main() {
   }
 
   // 加载配置
-  let config;
-  try {
-    const configContent = await fs.readFile(CONFIG_PATH, 'utf-8');
-    const userConfig = JSON.parse(configContent);
-    // 深度合并配置
-    config = {
-      ...DEFAULT_CONFIG,
-      ...userConfig,
-      gitcode: {
-        ...DEFAULT_CONFIG.gitcode,
-        ...(userConfig.gitcode || {})
-      },
-      codeReview: {
-        ...DEFAULT_CONFIG.codeReview,
-        ...(userConfig.codeReview || {})
-      }
-    };
-  } catch (error) {
-    console.log('⚠️  未找到配置文件，使用默认配置');
-    config = DEFAULT_CONFIG;
-  }
+  const config = loadConfig();
 
   // 应用命令行选项
   if (options.skipValidation) {
