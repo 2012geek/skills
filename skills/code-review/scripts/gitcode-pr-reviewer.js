@@ -12,7 +12,7 @@
 
 const fs = require('fs').promises;
 const path = require('path');
-const https = require('https');
+const { GitCodeAPI: SharedGitCodeAPI } = require('../lib/gitcode-api');
 
 // 配置文件路径 - 支持从不同目录运行
 const CONFIG_PATH = path.join(process.cwd(), 'config.json');
@@ -29,231 +29,24 @@ const DEFAULT_CONFIG = {
   }
 };
 
-/**
- * GitCode API 类
- */
-class GitCodeAPI {
-  constructor(config) {
-    this.config = config.gitcode;
-    this.headers = {
-      'Authorization': `Bearer ${this.config.token}`,
-      'Content-Type': 'application/json',
-      'User-Agent': 'Code-Review-Skill/1.0'
-    };
-  }
-
-  /**
-   * 发送 HTTP 请求（使用内置 https 模块）
-   */
-  async request(endpoint, options = {}) {
-    const url = new URL(`${this.config.baseUrl}${endpoint}`);
-
-    const requestOptions = {
-      hostname: url.hostname,
-      port: 443,
-      path: url.pathname + url.search,
-      method: options.method || 'GET',
-      headers: {
-        ...this.headers,
-        ...options.headers
-      }
-    };
-
-    if (options.body) {
-      requestOptions.headers['Content-Length'] = Buffer.byteLength(options.body);
-    }
-
-    return new Promise((resolve, reject) => {
-      const req = https.request(requestOptions, (res) => {
-        let data = '';
-
-        res.on('data', (chunk) => {
-          data += chunk;
-        });
-
-        res.on('end', () => {
-          try {
-            const jsonData = JSON.parse(data);
-            if (res.statusCode !== 200 && res.statusCode !== 201) {
-              reject(new Error(`API 请求失败: ${res.statusCode} - ${JSON.stringify(jsonData)}`));
-            } else {
-              resolve(jsonData);
-            }
-          } catch (e) {
-            reject(new Error(`解析响应失败: ${e.message}`));
-          }
-        });
-      });
-
-      req.on('error', (error) => {
-        reject(new Error(`请求失败: ${error.message}`));
-      });
-
-      if (options.body) {
-        req.write(options.body);
-      }
-
-      req.end();
-    });
-  }
-
-  /**
-   * 获取 PR 列表
-   */
-  async getPullRequests(state = 'open') {
-    const data = await this.request(
-      `/api/v5/repos/${this.config.owner}/${this.config.repo}/pulls?state=${state}&per_page=100`
-    );
-    return data;
-  }
-
-  /**
-   * 获取单个 PR 详情
-   */
-  async getPullRequest(prNumber) {
-    const data = await this.request(
-      `/api/v5/repos/${this.config.owner}/${this.config.repo}/pulls/${prNumber}`
-    );
-    return data;
-  }
-
-  /**
-   * 获取 PR 文件变更
-   */
-  async getPRFiles(prNumber) {
-    const data = await this.request(
-      `/api/v5/repos/${this.config.owner}/${this.config.repo}/pulls/${prNumber}/files`
-    );
-    return data;
-  }
-
-  /**
-   * 获取 PR diff（用于计算 position）
-   */
-  async getPRDiff(prNumber) {
-    const files = await this.getPRFiles(prNumber);
-    const diffs = {};
-
-    for (const file of files) {
-      if (file.patch) {
-        // GitCode 的 patch 是一个对象，包含 diff 字段
-        const patchContent = file.patch.diff || file.patch;
-        diffs[file.filename] = {
-          patch: patchContent,
-          additions: file.additions,
-          deletions: file.deletions,
-          status: file.status
-        };
-      }
-    }
-
-    return diffs;
-  }
-
-  /**
-   * 计算行号在 diff 中的 position
-   * GitCode API 使用 position 而不是 line 来定位行内评论
-   * position 是从 diff 开始位置的行数索引（从 1 开始）
-   */
-  calculatePosition(patch, lineNumber, isNewFile) {
-    if (!patch) return null;
-
-    const lines = patch.split('\n');
-    let position = 0;
-    let currentNewLine = 0;  // 新文件中的当前行号
-
-    // 跳过文件头（@@ 前面的行）
-    let inHunk = false;
-    let hunkNewStart = 0;
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-
-      // 检测 hunk 头 (@@ -L,S +L,S @@)
-      // 修复：使用第3个捕获组获取新文件起始行号 (+184)
-      const hunkMatch = line.match(/^@@\s+-\d+,?\d*\s+\+(\d+),?\d*\s+@@/);
-      if (hunkMatch) {
-        hunkNewStart = parseInt(hunkMatch[1]);
-        inHunk = true;
-        position = i + 1;  // position 从 1 开始
-        currentNewLine = hunkNewStart - 1;  // 修复：设置当前行为新文件起始行-1
-        continue;
-      }
-
-      if (!inHunk) continue;
-
-      // 解析 diff 行
-      const firstChar = line.charAt(0);
-
-      if (firstChar === '+') {
-        // 新增行
-        currentNewLine++;
-        if (currentNewLine === lineNumber) {
-          return position;
-        }
-      } else if (firstChar === '-') {
-        // 删除行 - position 增加，但新文件行号不变
-      } else if (firstChar === ' ') {
-        // 上下文行
-        currentNewLine++;
-        if (currentNewLine === lineNumber) {
-          return position;
-        }
-      }
-
-      position++;
-    }
-
-    return null;
-  }
-
-  /**
-   * 获取文件内容
-   */
-  async getFileContent(filePath, ref = 'HEAD') {
-    const encodedPath = encodeURIComponent(filePath);
-    const data = await this.request(
-      `/api/v5/repos/${this.config.owner}/${this.config.repo}/contents/${encodedPath}?ref=${ref}`
-    );
-
-    // GitCode 返回 base64 编码的内容
-    if (data.content) {
-      return Buffer.from(data.content, 'base64').toString('utf-8');
-    }
-    return '';
-  }
-
-  /**
-   * 提交 PR 评论
-   */
+class GitCodeAPI extends SharedGitCodeAPI {
   async submitComment(prNumber, body, commitId, path, position) {
     const payload = { body };
     if (commitId) payload.commit_id = commitId;
     if (path) payload.path = path;
     if (position !== undefined) payload.position = position;
 
-    const data = await this.request(
+    return await this.request(
       `/api/v5/repos/${this.config.owner}/${this.config.repo}/pulls/${prNumber}/comments`,
       {
         method: 'POST',
         body: JSON.stringify(payload)
       }
     );
-    return data;
   }
 
-  /**
-   * 提交 PR 整体审查评论
-   */
   async submitReviewComment(prNumber, body) {
-    const data = await this.request(
-      `/api/v5/repos/${this.config.owner}/${this.config.repo}/pulls/${prNumber}/comments`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ body })
-      }
-    );
-    return data;
+    return await this.submitPRComment(prNumber, body);
   }
 }
 

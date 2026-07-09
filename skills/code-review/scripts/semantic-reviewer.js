@@ -12,7 +12,7 @@
 
 const fs = require('fs').promises;
 const path = require('path');
-const https = require('https');
+const { GitCodeAPI: SharedGitCodeAPI } = require('../lib/gitcode-api');
 
 // 配置文件路径
 const CONFIG_PATH = path.join(process.cwd(), 'config.json');
@@ -29,125 +29,9 @@ const DEFAULT_CONFIG = {
   }
 };
 
-/**
- * GitCode API 封装
- */
-class GitCodeAPI {
-  constructor(config) {
-    this.config = config.gitcode;
-    this.headers = {
-      'Authorization': `Bearer ${this.config.token}`,
-      'Content-Type': 'application/json',
-      'User-Agent': 'Semantic-Code-Review/2.0'
-    };
-  }
-
-  async request(endpoint, options = {}) {
-    const url = new URL(`${this.config.baseUrl}${endpoint}`);
-
-    const requestOptions = {
-      hostname: url.hostname,
-      port: 443,
-      path: url.pathname + url.search,
-      method: options.method || 'GET',
-      headers: {
-        ...this.headers,
-        ...options.headers
-      }
-    };
-
-    if (options.body) {
-      requestOptions.headers['Content-Length'] = Buffer.byteLength(options.body);
-    }
-
-    return new Promise((resolve, reject) => {
-      const req = https.request(requestOptions, (res) => {
-        let data = '';
-        res.on('data', (chunk) => { data += chunk; });
-        res.on('end', () => {
-          try {
-            const jsonData = JSON.parse(data);
-            if (res.statusCode !== 200 && res.statusCode !== 201) {
-              reject(new Error(`API 请求失败: ${res.statusCode} - ${JSON.stringify(jsonData)}`));
-            } else {
-              resolve(jsonData);
-            }
-          } catch (e) {
-            resolve({ data });
-          }
-        });
-      });
-
-      req.on('error', reject);
-      if (options.body) req.write(options.body);
-      req.end();
-    });
-  }
-
+class GitCodeAPI extends SharedGitCodeAPI {
   async getPR(prNumber) {
-    return await this.request(`/api/v5/repos/${this.config.owner}/${this.config.repo}/pulls/${prNumber}`);
-  }
-
-  async getPRFiles(prNumber) {
-    return await this.request(`/api/v5/repos/${this.config.owner}/${this.config.repo}/pulls/${prNumber}/files`);
-  }
-
-  /**
-   * 提交行内评论（评论在特定代码行）
-   * POST /api/v5/repos/{owner}/{repo}/pulls/{number}/comments
-   *
-   * body: 评论内容
-   * path: 文件路径
-   * position: diff 中的位置（从1开始）
-   * commit_id: PR head commit 的 SHA
-   * line: 可选，具体行号
-   */
-  async submitInlineComment(prNumber, comment) {
-    const payload = {
-      body: comment.body,
-      path: comment.path,
-      position: comment.position,
-      commit_id: comment.commitId
-    };
-
-    return await this.request(
-      `/api/v5/repos/${this.config.owner}/${this.config.repo}/pulls/${prNumber}/comments`,
-      {
-        method: 'POST',
-        body: JSON.stringify(payload)
-      }
-    );
-  }
-
-  /**
-   * 提交整体评论（PR 级别）
-   */
-  async submitPRComment(prNumber, body) {
-    return await this.request(
-      `/api/v5/repos/${this.config.owner}/${this.config.repo}/pulls/${prNumber}/comments`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ body })
-      }
-    );
-  }
-
-  /**
-   * 批量提交评论
-   */
-  async submitBatchComments(prNumber, comments) {
-    const results = [];
-    for (const comment of comments) {
-      try {
-        const result = await this.submitInlineComment(prNumber, comment);
-        results.push({ success: true, comment, result });
-        console.log(`  ✅ 已提交行内评论: ${comment.path}:${comment.position}`);
-      } catch (error) {
-        results.push({ success: false, comment, error: error.message });
-        console.log(`  ❌ 提交失败: ${comment.path}:${comment.position} - ${error.message}`);
-      }
-    }
-    return results;
+    return await this.getPullRequest(prNumber);
   }
 }
 
