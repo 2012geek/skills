@@ -1,6 +1,6 @@
 {
   "name": "skills",
-  "workspaces": ["packages/*", "gitcode-*"],
+  "workspaces": ["packages/*"],
   "dependencies": {
     "@slidev/theme-seriph": "^0.25.0"
   },

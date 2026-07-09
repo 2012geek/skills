@@ -1,6 +1,0 @@
-{
-  "name": "gitcode-code-review",
-  "version": "2.5.0",
-  "description": "Multi-agent code review for GitCode Pull Requests",
-  "license": "MIT"
-}
