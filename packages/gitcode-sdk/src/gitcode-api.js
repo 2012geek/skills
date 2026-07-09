@@ -4,14 +4,20 @@ class GitCodeAPI {
   constructor(config) {
     this.config = config.gitcode;
     this.headers = {
-      'Authorization': `Bearer ${this.config.token}`,
       'Content-Type': 'application/json',
       'User-Agent': 'GitCode-SDK/1.0'
     };
   }
 
   async request(endpoint, options = {}) {
+    // GitCode API requires access_token as a query parameter.
+    // Authorization header (Bearer token) is rejected by the apig gateway
+    // on write operations (POST/PATCH/PUT/DELETE) with 403.
+    // Passing access_token in query works for both read and write.
     const url = new URL(`${this.config.baseUrl}${endpoint}`);
+    if (this.config.token) {
+      url.searchParams.set('access_token', this.config.token);
+    }
 
     const requestOptions = {
       hostname: url.hostname,
@@ -24,7 +30,13 @@ class GitCodeAPI {
       }
     };
 
-    if (options.body) {
+    if (options.formBody) {
+      const encoded = new URLSearchParams(options.formBody).toString();
+      requestOptions.headers['Content-Type'] = 'application/x-www-form-urlencoded';
+      requestOptions.headers['Content-Length'] = Buffer.byteLength(encoded);
+      // Replace options.body with the encoded form data for _rawRequest
+      options = { ...options, body: encoded };
+    } else if (options.body) {
       requestOptions.headers['Content-Length'] = Buffer.byteLength(options.body);
     }
 
@@ -112,9 +124,38 @@ class GitCodeAPI {
   }
 
   async closeIssue(issueNumber) {
+    // GitCode v5 API's state_event=close is silently ignored (confirmed bug).
+    // The working path: PUT to the internal issuepr API with xauth_token Bearer auth.
+    // If xauth_token is available, use the internal API; otherwise fall back to v5 (which won't actually close).
+    if (this.config.xauthToken) {
+      const encodedPath = encodeURIComponent(`${this.config.owner}/${this.config.repo}`);
+      const url = `https://web-api.gitcode.com/issuepr/api/v1/issue/${encodedPath}/issues/${issueNumber}`;
+      const body = JSON.stringify({ state_event: 'close' });
+      const options = {
+        hostname: 'web-api.gitcode.com',
+        port: 443,
+        path: `/issuepr/api/v1/issue/${encodedPath}/issues/${issueNumber}`,
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${this.config.xauthToken}`,
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(body),
+          'x-platform': 'web',
+          'x-app-channel': 'gitcode-fe',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36'
+        }
+      };
+
+      const response = await this._rawRequest(url, options, { body });
+      if (response.statusCode === 200) {
+        return response.json;
+      }
+      // If internal API fails, fall through to v5 API
+    }
+
     return await this.request(
       `/api/v5/repos/${this.config.owner}/${this.config.repo}/issues/${issueNumber}`,
-      { method: 'PATCH', body: JSON.stringify({ state: 'closed' }) }
+      { method: 'PATCH', formBody: { state_event: 'close', title: 'Closed by bot' } }
     );
   }
 

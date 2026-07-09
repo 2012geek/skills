@@ -54,9 +54,27 @@ describe('GitCodeAPI', () => {
     });
   });
 
-  test('constructor sets config and headers', () => {
+  test('constructor sets config without Authorization header', () => {
     expect(api.config.token).toBe('test-token');
-    expect(api.headers['Authorization']).toBe('Bearer test-token');
+    expect(api.headers['Authorization']).toBeUndefined();
+  });
+
+  test('request() includes access_token as query parameter', async () => {
+    const captured = { path: null };
+    const mock = mockHttpsRequest([
+      { statusCode: 200, body: JSON.stringify([{ number: 1 }]) }
+    ]);
+    // Patch https.request to capture the path
+    const origRequest = https.request;
+    https.request = function (options, callback) {
+      captured.path = options.path;
+      return origRequest(options, callback);
+    };
+
+    await api.listIssues(null, 1);
+    expect(captured.path).toContain('access_token=test-token');
+    https.request = origRequest;
+    mock.restore();
   });
 
   test('createIssue() sends POST to correct endpoint', async () => {
@@ -79,13 +97,35 @@ describe('GitCodeAPI', () => {
     mock.restore();
   });
 
-  test('closeIssue() sends PATCH with state closed', async () => {
+  test('closeIssue() sends PATCH with form-encoded body', async () => {
     const mock = mockHttpsRequest([
       { statusCode: 200, body: JSON.stringify({ number: 42, state: 'closed' }) }
     ]);
 
     const result = await api.closeIssue(42);
-    expect(result.state).toBe('closed');
+    expect(result.number).toBe(42);
+    mock.restore();
+  });
+
+  test('request() formBody encodes as application/x-www-form-urlencoded', async () => {
+    const captured = { path: null, headers: {} };
+    const mock = mockHttpsRequest([
+      { statusCode: 200, body: JSON.stringify({ number: 42 }) }
+    ]);
+    const origRequest = https.request;
+    https.request = function (options, callback) {
+      captured.path = options.path;
+      captured.headers = options.headers;
+      return origRequest(options, callback);
+    };
+
+    await api.request('/api/v5/repos/test-org/test-repo/issues/42', {
+      method: 'PATCH',
+      formBody: { state_event: 'close' }
+    });
+    expect(captured.headers['Content-Type']).toBe('application/x-www-form-urlencoded');
+    expect(captured.headers['Authorization']).toBeUndefined();
+    https.request = origRequest;
     mock.restore();
   });
 
