@@ -19,17 +19,18 @@
 const fs = require('fs').promises;
 const path = require('path');
 
-// Resolve SDK path relative to this script's location within the plugin
-const PLUGIN_ROOT = path.resolve(__dirname, '..', '..', '..');
-const { GitCodeAPI, CommentFormatter, AgentRunner, ConfigLoader } = require(path.join(PLUGIN_ROOT, 'lib', 'gitcode-sdk'));
+// Resolve SDK path relative to this skill so the package works when copied or
+// installed independently on another machine.
+const SKILL_ROOT = path.resolve(__dirname, '..');
+const { GitCodeAPI, CommentFormatter, AgentRunner, ConfigLoader } = require(path.join(SKILL_ROOT, 'lib'));
 
 const CONFIG_PATH = path.join(process.cwd(), 'config.json');
 
 const DEFAULT_CONFIG = {
   gitcode: {
     token: '',
-    owner: 'openeuler',
-    repo: 'vla-factory',
+    owner: '',
+    repo: '',
     baseUrl: 'https://api.gitcode.com'
   },
   codeReview: {
@@ -848,8 +849,9 @@ async function main() {
   }
 
   // 验证 token
-  if (!config.gitcode.token) {
-    console.error('❌ 错误: 请在 config.json 中配置 gitcode.token');
+  if (!config.gitcode.token || !config.gitcode.owner || !config.gitcode.repo) {
+    console.error('❌ 错误: 请配置 gitcode.token、gitcode.owner 和 gitcode.repo');
+    console.error('可使用 config.json，或设置 GITCODE_TOKEN、GITCODE_OWNER、GITCODE_REPO 环境变量。');
     process.exit(1);
   }
 

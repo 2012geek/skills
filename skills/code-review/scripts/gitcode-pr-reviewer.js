@@ -19,8 +19,8 @@ const CONFIG_PATH = path.join(process.cwd(), 'config.json');
 const DEFAULT_CONFIG = {
   gitcode: {
     token: '',
-    owner: 'openeuler',
-    repo: 'lerobot_ros2',
+    owner: '',
+    repo: '',
     baseUrl: 'https://api.gitcode.com'
   },
   codeReview: {
@@ -336,15 +336,15 @@ async function main() {
     config = DEFAULT_CONFIG;
   }
 
-  // 验证 token
-  if (!config.gitcode.token) {
-    console.error('❌ 错误: 请在 config.json 中配置 gitcode.token');
+  // 验证配置
+  if (!config.gitcode.token || !config.gitcode.owner || !config.gitcode.repo) {
+    console.error('❌ 错误: 请在 config.json 中配置 gitcode.token、gitcode.owner 和 gitcode.repo');
     console.log('\n获取 Token 步骤:');
     console.log('1. 访问 https://gitcode.com 并登录');
     console.log('2. 点击右上角头像 → 个人设置');
     console.log('3. 找到「访问令牌」选项');
     console.log('4. 创建新的访问令牌');
-    console.log('5. 将 Token 填入 config.json\n');
+    console.log('5. 将 Token 和目标仓库 owner/repo 填入 config.json\n');
     process.exit(1);
   }
 

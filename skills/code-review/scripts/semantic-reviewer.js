@@ -19,8 +19,8 @@ const CONFIG_PATH = path.join(process.cwd(), 'config.json');
 const DEFAULT_CONFIG = {
   gitcode: {
     token: '',
-    owner: 'openeuler',
-    repo: 'lerobot_ros2',
+    owner: '',
+    repo: '',
     baseUrl: 'https://api.gitcode.com'
   },
   codeReview: {
@@ -808,9 +808,9 @@ async function main() {
     config = DEFAULT_CONFIG;
   }
 
-  // 验证 token
-  if (!config.gitcode.token) {
-    console.error('❌ 错误: 请在 config.json 中配置 gitcode.token');
+  // 验证配置
+  if (!config.gitcode.token || !config.gitcode.owner || !config.gitcode.repo) {
+    console.error('❌ 错误: 请在 config.json 中配置 gitcode.token、gitcode.owner 和 gitcode.repo');
     process.exit(1);
   }
 

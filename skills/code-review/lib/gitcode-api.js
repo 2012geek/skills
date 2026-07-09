@@ -162,6 +162,7 @@ class GitCodeAPI {
         hunkNewStart = parseInt(hunkMatch[1]);
         inHunk = true;
         position = i + 1;  // position 从 1 开始
+        currentNewLine = hunkNewStart - 1;
         continue;
       }
 
