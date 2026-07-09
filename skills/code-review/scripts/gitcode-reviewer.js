@@ -19,7 +19,9 @@
 const fs = require('fs').promises;
 const path = require('path');
 
-const { GitCodeAPI, CommentFormatter, AgentRunner, ConfigLoader } = require('../../../lib/gitcode-sdk');
+// Resolve SDK path relative to this script's location within the plugin
+const PLUGIN_ROOT = path.resolve(__dirname, '..', '..', '..');
+const { GitCodeAPI, CommentFormatter, AgentRunner, ConfigLoader } = require(path.join(PLUGIN_ROOT, 'lib', 'gitcode-sdk'));
 
 const CONFIG_PATH = path.join(process.cwd(), 'config.json');
 
@@ -27,7 +29,7 @@ const DEFAULT_CONFIG = {
   gitcode: {
     token: '',
     owner: 'openeuler',
-    repo: 'lerobot_ros2',
+    repo: 'vla-factory',
     baseUrl: 'https://api.gitcode.com'
   },
   codeReview: {
@@ -37,24 +39,47 @@ const DEFAULT_CONFIG = {
 };
 
 function loadConfig() {
-  const loader = new ConfigLoader({ configPath: CONFIG_PATH });
+  // Try config.json first, fall back to environment variables
+  const envConfig = {
+    gitcode: {
+      token: process.env.GITCODE_TOKEN || '',
+      owner: process.env.GITCODE_OWNER || DEFAULT_CONFIG.gitcode.owner,
+      repo: process.env.GITCODE_REPO || DEFAULT_CONFIG.gitcode.repo,
+      baseUrl: process.env.GITCODE_BASE_URL || DEFAULT_CONFIG.gitcode.baseUrl
+    }
+  };
+
   try {
+    const loader = new ConfigLoader({ configPath: CONFIG_PATH });
     const userConfig = loader.loadRaw();
-    return {
+    const merged = {
       ...DEFAULT_CONFIG,
       ...userConfig,
       gitcode: {
         ...DEFAULT_CONFIG.gitcode,
-        ...(userConfig.gitcode || {})
+        ...(userConfig.gitcode || {}),
+        // Config.json explicit values take precedence, env vars provide fallback defaults
+        token: (userConfig.gitcode && userConfig.gitcode.token) || envConfig.gitcode.token,
+        owner: (userConfig.gitcode && userConfig.gitcode.owner) || envConfig.gitcode.owner,
+        repo: (userConfig.gitcode && userConfig.gitcode.repo) || envConfig.gitcode.repo,
+        baseUrl: (userConfig.gitcode && userConfig.gitcode.baseUrl) || envConfig.gitcode.baseUrl
       },
       codeReview: {
         ...DEFAULT_CONFIG.codeReview,
         ...(userConfig.codeReview || {})
       }
     };
+    return merged;
   } catch (e) {
-    console.log('⚠️  未找到配置文件，使用默认配置');
-    return DEFAULT_CONFIG;
+    // No config.json found — use env vars as fallback
+    console.log('⚠️  未找到配置文件，使用环境变量');
+    return {
+      ...DEFAULT_CONFIG,
+      gitcode: {
+        ...DEFAULT_CONFIG.gitcode,
+        ...envConfig.gitcode
+      }
+    };
   }
 }
 
