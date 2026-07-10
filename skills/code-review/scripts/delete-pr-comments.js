@@ -140,24 +140,63 @@ async function main() {
     return;
   }
 
+  // GitCode blocks deletion of discussions that have replies ("Can not delete a
+  // discussion that has replies"). Strategy: delete all replies first, then
+  // delete the parent comments.
   let deleted = 0;
   let browserComment = null;
-  for (const comment of matches) {
-    try {
-      await api.deletePRComment(options.prNumber, comment.id);
-    } catch (error) {
-      if (!options.uiAuth) {
+
+  if (options.uiAuth) {
+    browserComment = new BrowserComment(config);
+    const xauthToken = await browserComment.login();
+
+    // Phase 1: Delete replies for matched comments that have them
+    let totalReplies = 0;
+    for (const comment of matches) {
+      const replies = comment.reply || [];
+      if (replies.length === 0) continue;
+      console.log(`Deleting ${replies.length} replies for comment ${comment.id}...`);
+      for (const reply of replies) {
+        try {
+          await browserComment.deletePRCommentWithToken(
+            options.prNumber,
+            { id: reply.id, discussion_id: comment.discussion_id },
+            xauthToken
+          );
+          console.log(`  Deleted reply ${reply.id}`);
+          totalReplies++;
+        } catch (e) {
+          console.log(`  Failed reply ${reply.id}: ${e.message.slice(0, 100)}`);
+        }
+      }
+    }
+    if (totalReplies > 0) console.log(`Deleted ${totalReplies} reply(s).`);
+
+    // Phase 2: Delete parent comments (now reply-free)
+    for (const comment of matches) {
+      try {
+        await browserComment.deletePRCommentWithToken(
+          options.prNumber,
+          { id: comment.id, discussion_id: comment.discussion_id },
+          xauthToken
+        );
+        deleted++;
+        console.log(`Deleted comment ${comment.id}`);
+      } catch (e) {
+        console.log(`Failed comment ${comment.id}: ${e.message.slice(0, 100)}`);
+      }
+    }
+  } else {
+    // No ui-auth: try public API only (will fail on discussions with replies)
+    for (const comment of matches) {
+      try {
+        await api.deletePRComment(options.prNumber, comment.id);
+        deleted++;
+        console.log(`Deleted comment ${comment.id}`);
+      } catch (error) {
         throw error;
       }
-      console.log(`Public API delete failed for ${comment.id}: ${error.message}`);
-      console.log('Trying browser-auth internal delete...');
-      if (!browserComment) {
-        browserComment = new BrowserComment(config);
-      }
-      await browserComment.deletePRComment(options.prNumber, comment);
     }
-    deleted++;
-    console.log(`Deleted comment ${comment.id}`);
   }
 
   console.log(`Deleted ${deleted}/${matches.length} comment(s).`);
