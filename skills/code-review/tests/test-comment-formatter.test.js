@@ -111,4 +111,36 @@ describe('CommentFormatter - referenceCategories', () => {
       expect(result[0].url).toBe('https://example.com/1');
     });
   });
+
+  describe('commentLanguage', () => {
+    test('formats built-in labels in English', () => {
+      formatter = new CommentFormatter({ codeReview: { commentLanguage: 'en' } });
+
+      const result = formatter.formatIssue({
+        file: 'test.py',
+        line: 10,
+        title: 'Example issue',
+        description: 'Example description',
+        contextCode: 'print("bad")',
+        fix: { explanation: 'Use a safer implementation.' },
+        references: [
+          { title: 'Example Doc', url: 'https://example.com/doc' }
+        ]
+      });
+
+      expect(result.body).toContain('**Context code**:');
+      expect(result.body).toContain('**Fix**:');
+      expect(result.body).toContain('**Official references**:');
+      expect(result.body).toContain('**References**:');
+    });
+
+    test('formats no-issues comment in English', () => {
+      formatter = new CommentFormatter({ codeReview: { commentLanguage: 'en' } });
+
+      const result = formatter.formatNoIssues();
+
+      expect(result).toContain('## Code review');
+      expect(result).toContain('No issues found.');
+    });
+  });
 });

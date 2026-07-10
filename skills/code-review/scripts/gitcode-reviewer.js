@@ -35,7 +35,11 @@ const DEFAULT_CONFIG = {
   },
   codeReview: {
     confidenceThreshold: 80,
-    skipValidation: false
+    skipValidation: false,
+    commentLanguage: null,
+    writeTemp: false,
+    reviewGuidePath: null,
+    reviewGuide: null
   }
 };
 
@@ -84,6 +88,83 @@ function loadConfig() {
   }
 }
 
+function normalizeCommentLanguage(value) {
+  if (!value) return null;
+  const normalized = String(value).trim().toLowerCase();
+  if (['zh', 'cn', 'chinese', '中文'].includes(normalized)) return 'zh';
+  if (['en', 'english', '英文'].includes(normalized)) return 'en';
+  return null;
+}
+
+async function loadReviewGuide(reviewGuidePath) {
+  if (!reviewGuidePath) return null;
+
+  const resolvedPath = path.resolve(process.cwd(), reviewGuidePath);
+  const content = await fs.readFile(resolvedPath, 'utf-8');
+  const trimmed = content.trim();
+  if (!trimmed) {
+    throw new Error(`Review guide is empty: ${reviewGuidePath}`);
+  }
+
+  return {
+    path: reviewGuidePath,
+    resolvedPath,
+    content: trimmed
+  };
+}
+
+function readStdin() {
+  return new Promise((resolve, reject) => {
+    let data = '';
+    process.stdin.setEncoding('utf-8');
+    process.stdin.on('data', chunk => { data += chunk; });
+    process.stdin.on('end', () => resolve(data));
+    process.stdin.on('error', reject);
+  });
+}
+
+function askQuestion(question) {
+  const readline = require('readline');
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+  return new Promise(resolve => {
+    rl.question(question, answer => {
+      rl.close();
+      resolve(answer);
+    });
+  });
+}
+
+async function resolveCommentLanguage(config, cliLanguage, willPost) {
+  const configured = normalizeCommentLanguage(cliLanguage) ||
+    normalizeCommentLanguage(config.codeReview.commentLanguage) ||
+    normalizeCommentLanguage(process.env.CODE_REVIEW_COMMENT_LANGUAGE);
+
+  if (configured) return configured;
+
+  if (process.stdin.isTTY && process.stdout.isTTY) {
+    const answer = await askQuestion('Choose review comment language [en/zh]: ');
+    const language = normalizeCommentLanguage(answer);
+    if (language) return language;
+  }
+
+  if (willPost) {
+    throw new Error('Comment language is required before posting. Use --comment-language en or --comment-language zh.');
+  }
+
+  return 'zh';
+}
+
+function parseApprovalList(value) {
+  if (!value) return null;
+  return new Set(String(value)
+    .split(',')
+    .map(v => parseInt(v.trim(), 10))
+    .filter(Number.isFinite));
+}
+
 /**
  * GitCode PR 审查器
  */
@@ -130,6 +211,9 @@ class GitCodeReviewer {
 
     // Step 4: 并行审查 (4 个代理)
     const issues = await this.step4_ParallelReview(context, summary);
+    if (issues === null) {
+      return { reviewed: true, promptsGenerated: true };
+    }
 
     console.log(`\n📋 发现 ${issues.length} 个问题`);
 
@@ -174,18 +258,26 @@ class GitCodeReviewer {
    * 从 JSON 文件加载问题并提交评论
    * 跳过 Step 1-4，直接执行 Step 5-9
    */
-  async reviewFromJson(prNumber, jsonPath) {
+  async reviewFromJson(prNumber, jsonPath, submitOptions = {}) {
     console.log(`\n${'='.repeat(60)}`);
     console.log(`🔍 GitCode PR 审查工具（从 JSON 加载）`);
     console.log(`${'='.repeat(60)}`);
     console.log(`审查 PR #${prNumber}`);
     console.log(`问题来源: ${jsonPath}\n`);
+    // Step 4: 从 JSON 加载问题
+    const issues = await this.step4_LoadFromJson(jsonPath);
+    return await this.reviewFromIssues(prNumber, issues, submitOptions);
+  }
+
+  /**
+   * 从已解析的问题数组预览或提交评论
+   */
+  async reviewFromIssues(prNumber, issues, submitOptions = {}) {
+    const shouldPost = Boolean(submitOptions.post && !submitOptions.dryRun);
+    console.log(`发布模式: ${shouldPost ? '提交评论' : '仅预览'}\n`);
 
     // Step 2: 收集上下文（需要 patchInfos 计算 position）
     const context = await this.step2_GatherContext(prNumber);
-
-    // Step 4: 从 JSON 加载问题
-    const issues = await this.step4_LoadFromJson(jsonPath);
 
     if (issues.length === 0) {
       console.log('⚠️  没有要提交的问题\n');
@@ -204,6 +296,10 @@ class GitCodeReviewer {
 
     // Step 7: 判断
     if (filteredIssues.length === 0) {
+      if (!shouldPost) {
+        console.log('ℹ️  仅预览，未发布 "No issues found" 评论。\n');
+        return { reviewed: true, preview: true, issuesFound: false };
+      }
       await this.step7_NoIssues(prNumber);
       return { reviewed: true, issuesFound: false };
     }
@@ -211,8 +307,20 @@ class GitCodeReviewer {
     // Step 8: 准备评论
     const comments = this.step8_PrepareComments(filteredIssues, context);
 
+    if (!shouldPost) {
+      this.previewComments(comments);
+      console.log('ℹ️  仅预览，未发布评论。添加 --post 并显式批准后才会提交。\n');
+      return { reviewed: true, preview: true, issuesFound: true, comments };
+    }
+
+    const approvedComments = await this.selectApprovedComments(comments, submitOptions);
+    if (approvedComments.length === 0) {
+      console.log('ℹ️  没有批准的评论，未发布任何内容。\n');
+      return { reviewed: true, posted: false, issuesFound: true, comments: [] };
+    }
+
     // Step 9: 发布评论
-    const results = await this.step9_PostComments(prNumber, comments);
+    const results = await this.step9_PostComments(prNumber, approvedComments);
 
     return { reviewed: true, issuesFound: true, results };
   }
@@ -364,44 +472,43 @@ class GitCodeReviewer {
       this.runner.runAgent('python-classmethod-checker', agentContext)
     ]);
 
-    // 将 prompts 保存到临时文件供 Claude 执行
-    const tempDir = path.join(process.cwd(), '.temp-review');
-    await fs.mkdir(tempDir, { recursive: true });
+    if (this.config.codeReview.writeTemp) {
+      const tempDir = path.join(process.cwd(), '.temp-review');
+      await fs.mkdir(tempDir, { recursive: true });
 
-    // 保存每个代理的 prompt
-    await fs.writeFile(
-      path.join(tempDir, `agent-1-bug-scanner-diff.md`),
-      `# Agent 1: Bug Scanner (Diff)\n\n${agent1.prompt}`,
-      'utf-8'
-    );
-    await fs.writeFile(
-      path.join(tempDir, `agent-2-bug-scanner-diff-2.md`),
-      `# Agent 2: Bug Scanner (Diff) - Redundant\n\n${agent2.prompt}`,
-      'utf-8'
-    );
-    await fs.writeFile(
-      path.join(tempDir, `agent-3-code-analyzer.md`),
-      `# Agent 3: Code Analyzer\n\n${agent3.prompt}`,
-      'utf-8'
-    );
-    await fs.writeFile(
-      path.join(tempDir, `agent-4-semantic-analyzer.md`),
-      `# Agent 4: Semantic Analyzer\n\n${agent4.prompt}`,
-      'utf-8'
-    );
-    await fs.writeFile(
-      path.join(tempDir, `agent-5-python-classmethod-checker.md`),
-      `# Agent 5: Python @classmethod Checker\n\n${agent5.prompt}`,
-      'utf-8'
-    );
+      await fs.writeFile(
+        path.join(tempDir, `agent-1-bug-scanner-diff.md`),
+        `# Agent 1: Bug Scanner (Diff)\n\n${agent1.prompt}`,
+        'utf-8'
+      );
+      await fs.writeFile(
+        path.join(tempDir, `agent-2-bug-scanner-diff-2.md`),
+        `# Agent 2: Bug Scanner (Diff) - Redundant\n\n${agent2.prompt}`,
+        'utf-8'
+      );
+      await fs.writeFile(
+        path.join(tempDir, `agent-3-code-analyzer.md`),
+        `# Agent 3: Code Analyzer\n\n${agent3.prompt}`,
+        'utf-8'
+      );
+      await fs.writeFile(
+        path.join(tempDir, `agent-4-semantic-analyzer.md`),
+        `# Agent 4: Semantic Analyzer\n\n${agent4.prompt}`,
+        'utf-8'
+      );
+      await fs.writeFile(
+        path.join(tempDir, `agent-5-python-classmethod-checker.md`),
+        `# Agent 5: Python @classmethod Checker\n\n${agent5.prompt}`,
+        'utf-8'
+      );
 
-    console.log(`  ✅ Prompts 已保存到 ${tempDir}`);
-    console.log(`  ℹ️  请在另一个 Claude Code 会话中执行这些 prompts`);
-    console.log(`  ℹ️  然后使用 --issues 参数传入发现的问题\n`);
+      console.log(`  ✅ Prompts 已保存到 ${tempDir}`);
+    } else {
+      console.log('  ℹ️  未写入临时文件。建议使用 --auto-review --prompts-stdout 获取机器可读 prompts。');
+    }
+    console.log(`  ℹ️  执行 prompts 后使用 --issues-from-stdin 或 --issues-from-json 传入发现的问题\n`);
 
-    // 返回空数组，实际使用时需要 Claude 执行代理
-    // 或者用户可以通过 --issues-from-json 参数传入
-    return [];
+    return null;
   }
 
   /**
@@ -579,6 +686,42 @@ class GitCodeReviewer {
     return results;
   }
 
+  previewComments(comments) {
+    console.log('\n📋 评论预览:\n');
+    comments.forEach((comment, index) => {
+      const firstLine = comment.body.split('\n').find(Boolean) || '';
+      console.log(`[${index + 1}] ${comment.path}:${comment.line || '?'} ${firstLine}`);
+    });
+    console.log('');
+  }
+
+  async selectApprovedComments(comments, options) {
+    if (options.noApproval || options.approveAll) {
+      return comments;
+    }
+
+    if (options.approveList && options.approveList.size > 0) {
+      return comments.filter((_, index) => options.approveList.has(index + 1));
+    }
+
+    if (!process.stdin.isTTY || !process.stdout.isTTY) {
+      throw new Error('Posting requires explicit approval. Use --approve-all, --approve 1,3, or --no-approval.');
+    }
+
+    const approved = [];
+    for (let i = 0; i < comments.length; i++) {
+      const comment = comments[i];
+      console.log(`\n[${i + 1}] ${comment.path}:${comment.line || '?'}`);
+      console.log(comment.body);
+      const answer = await askQuestion('Post this comment? [y/N]: ');
+      if (/^y(es)?$/i.test(answer.trim())) {
+        approved.push(comment);
+      }
+    }
+
+    return approved;
+  }
+
   /**
    * 🔧 方案5: DRY-RUN 模式预览
    * 显示问题预览而不提交
@@ -666,7 +809,9 @@ class GitCodeReviewer {
    * @param {boolean} dryRun - 是否为 dry-run 模式
    * @returns {Object} 包含所有 prompts 和上下文的结果
    */
-  async runAllAgents(prNumber, force = false, dryRun = false) {
+  async runAllAgents(prNumber, options = {}) {
+    const force = Boolean(options.force);
+    const dryRun = Boolean(options.dryRun);
     console.log(`\n${'='.repeat(60)}`);
     console.log(`🤖 自动审查模式`);
     console.log(`${'='.repeat(60)}`);
@@ -685,21 +830,35 @@ class GitCodeReviewer {
     // Step 3: 总结 PR
     const summary = await this.step3_SummaryPR(context);
 
+    if (this.config.codeReview.reviewGuide) {
+      console.log(`  📘 Review guide: ${this.config.codeReview.reviewGuide.path}`);
+    }
+
     // Step 4: 并行审查（生成所有 prompts）
     const agentResults = await this.step4_GenerateAllPrompts(context, summary);
 
-    // 输出结构化 JSON
-    const outputPath = path.join(process.cwd(), `.temp-review`, `pr-${prNumber}-prompts.json`);
-    await fs.mkdir(path.dirname(outputPath), { recursive: true });
-    await fs.writeFile(outputPath, JSON.stringify(agentResults, null, 2), 'utf-8');
+    let outputPath = null;
+    if (options.writeTemp) {
+      outputPath = path.join(process.cwd(), `.temp-review`, `pr-${prNumber}-prompts.json`);
+      await fs.mkdir(path.dirname(outputPath), { recursive: true });
+      await fs.writeFile(outputPath, JSON.stringify(agentResults, null, 2), 'utf-8');
+      console.log(`\n📋 已保存 prompts 到: ${outputPath}`);
+    }
 
-    console.log(`\n📋 已保存 prompts 到: ${outputPath}`);
     console.log(`\n📊 统计:`);
     console.log(`  - Agent 1 (Bug Scanner): ${agentResults.agents[0].prompt.length} 字符`);
     console.log(`  - Agent 2 (Bug Scanner 2): ${agentResults.agents[1].prompt.length} 字符`);
     console.log(`  - Agent 3 (Code Analyzer): ${agentResults.agents[2].prompt.length} 字符`);
     console.log(`  - Agent 4 (Semantic Analyzer): ${agentResults.agents[3].prompt.length} 字符`);
     console.log(`  - Agent 5 (Python Checker): ${agentResults.agents[4].prompt.length} 字符`);
+
+    if (options.promptsStdout) {
+      console.log('\n---BEGIN_GITCODE_REVIEW_PROMPTS_JSON---');
+      console.log(JSON.stringify(agentResults, null, 2));
+      console.log('---END_GITCODE_REVIEW_PROMPTS_JSON---');
+    } else if (!options.writeTemp) {
+      console.log('\nℹ️  未写入临时文件。需要机器可读 prompts 时请使用 --prompts-stdout；调试落盘请使用 --write-temp。');
+    }
 
     if (dryRun) {
       console.log('\n🔍 DRY RUN - 未执行审查\n');
@@ -725,7 +884,11 @@ class GitCodeReviewer {
   async step4_GenerateAllPrompts(context, summary) {
     console.log('生成所有 agent prompts...');
 
-    const agentContext = { context, summary };
+    const agentContext = {
+      context,
+      summary,
+      reviewGuide: this.config.codeReview.reviewGuide || null
+    };
     const agentNames = [
       'bug-scanner-diff',
       'bug-scanner-diff-2',
@@ -753,6 +916,12 @@ class GitCodeReviewer {
         url: context.pr.htmlUrl
       },
       summary: summary,
+      reviewGuide: this.config.codeReview.reviewGuide
+        ? {
+            path: this.config.codeReview.reviewGuide.path,
+            contentLength: this.config.codeReview.reviewGuide.content.length
+          }
+        : null,
       agents: agents,
       generatedAt: new Date().toISOString()
     };
@@ -771,8 +940,17 @@ async function main() {
     force: args.includes('--force'),
     dryRun: args.includes('--dry-run'),
     autoReview: args.includes('--auto-review'),  // 🔧 方案1: 自动执行所有 agents
+    issuesFromStdin: args.includes('--issues-from-stdin'),
+    post: args.includes('--post'),
+    approveAll: args.includes('--approve-all'),
+    noApproval: args.includes('--no-approval'),
+    promptsStdout: args.includes('--prompts-stdout'),
+    writeTemp: args.includes('--write-temp'),
     threshold: null,
-    issuesFromJson: null
+    issuesFromJson: null,
+    approveList: null,
+    commentLanguage: null,
+    reviewGuidePath: null
   };
 
   // 查找 --pr 参数
@@ -785,6 +963,24 @@ async function main() {
   const issuesIndex = args.indexOf('--issues-from-json');
   if (issuesIndex !== -1 && args[issuesIndex + 1]) {
     options.issuesFromJson = args[issuesIndex + 1];
+  }
+
+  // 查找 --approve 参数
+  const approveIndex = args.indexOf('--approve');
+  if (approveIndex !== -1 && args[approveIndex + 1]) {
+    options.approveList = parseApprovalList(args[approveIndex + 1]);
+  }
+
+  // 查找 --comment-language 参数
+  const languageIndex = args.indexOf('--comment-language');
+  if (languageIndex !== -1 && args[languageIndex + 1]) {
+    options.commentLanguage = args[languageIndex + 1];
+  }
+
+  // 查找 --review-guide 参数
+  const reviewGuideIndex = args.indexOf('--review-guide');
+  if (reviewGuideIndex !== -1 && args[reviewGuideIndex + 1]) {
+    options.reviewGuidePath = args[reviewGuideIndex + 1];
   }
 
   // 查找 --threshold 参数
@@ -800,13 +996,20 @@ async function main() {
     console.error('  node gitcode-reviewer.js --pr <number>');
     console.error('');
     console.error('  # 自动审查模式（生成结构化 JSON prompts）');
-    console.error('  node gitcode-reviewer.js --pr <number> --auto-review');
+    console.error('  node gitcode-reviewer.js --pr <number> --auto-review --prompts-stdout [--review-guide <path>]');
     console.error('');
     console.error('  # DRY-RUN 模式（预览不提交）');
     console.error('  node gitcode-reviewer.js --pr <number> --dry-run');
     console.error('');
-    console.error('  # 从 JSON 文件加载问题并提交评论');
+    console.error('  # 从 JSON 文件加载问题并预览评论');
     console.error('  node gitcode-reviewer.js --pr <number> --issues-from-json <path>');
+    console.error('');
+    console.error('  # 从 stdin 加载问题并预览评论');
+    console.error('  cat issues.json | node gitcode-reviewer.js --pr <number> --issues-from-stdin');
+    console.error('');
+    console.error('  # 提交已批准评论');
+    console.error('  node gitcode-reviewer.js --pr <number> --issues-from-json <path> --post --approve 1,3 --comment-language en');
+    console.error('  node gitcode-reviewer.js --pr <number> --issues-from-json <path> --post --approve-all --comment-language zh');
     console.error('');
     console.error('  # 跳过验证');
     console.error('  node gitcode-reviewer.js --pr <number> --issues-from-json <path> --skip-validation');
@@ -844,9 +1047,28 @@ async function main() {
   if (options.dryRun) {
     config.codeReview.dryRun = true;
   }
+  if (options.writeTemp) {
+    config.codeReview.writeTemp = true;
+  }
   if (options.threshold !== null) {
     config.codeReview.confidenceThreshold = options.threshold;
   }
+
+  const reviewGuidePath = options.reviewGuidePath || config.codeReview.reviewGuidePath;
+  if (reviewGuidePath) {
+    try {
+      config.codeReview.reviewGuide = await loadReviewGuide(reviewGuidePath);
+    } catch (error) {
+      console.error(`❌ 无法加载 review guide: ${error.message}`);
+      process.exit(1);
+    }
+  }
+
+  config.codeReview.commentLanguage = await resolveCommentLanguage(
+    config,
+    options.commentLanguage,
+    options.post && !options.dryRun
+  );
 
   // 验证 token
   if (!config.gitcode.token || !config.gitcode.owner || !config.gitcode.repo) {
@@ -860,12 +1082,16 @@ async function main() {
 
   try {
     if (options.issuesFromJson) {
-      // 从 JSON 加载问题并提交
-      await reviewer.reviewFromJson(options.prNumber, options.issuesFromJson);
+      // 从 JSON 加载问题并预览或提交
+      await reviewer.reviewFromJson(options.prNumber, options.issuesFromJson, options);
+    } else if (options.issuesFromStdin) {
+      const input = await readStdin();
+      const issues = JSON.parse(input);
+      await reviewer.reviewFromIssues(options.prNumber, issues, options);
     } else if (options.autoReview) {
       // 🔧 方案1: 自动执行所有 agents，输出结构化 JSON
       console.log('🤖 自动审查模式 - 执行所有 agents\n');
-      const result = await reviewer.runAllAgents(options.prNumber, options.force, config.codeReview.dryRun);
+      await reviewer.runAllAgents(options.prNumber, options);
       console.log('\n✅ 自动审查完成');
     } else {
       // 完整流程（生成 prompts 供手动审查）

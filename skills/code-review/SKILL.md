@@ -1,6 +1,6 @@
 ---
 name: code-review
-description: Review GitCode pull requests with a self-contained multi-agent prompt pipeline, validate JSON review findings, and post GitCode inline comments. Use when the user asks to review a GitCode PR, generate review prompts, submit review issues from JSON, or create/update GitCode PR metadata with this skill's scripts.
+description: Review GitCode pull requests with a self-contained multi-agent prompt pipeline, validate JSON review findings, post or delete GitCode inline comments, and create/update GitCode PR metadata with this skill's scripts.
 ---
 
 # GitCode Code Review
@@ -28,7 +28,8 @@ export GITCODE_BASE_URL=https://api.gitcode.com
   },
   "codeReview": {
     "confidenceThreshold": 80,
-    "skipValidation": false
+    "skipValidation": false,
+    "commentLanguage": "en"
   }
 }
 ```
@@ -39,43 +40,59 @@ When running from a plugin host that exposes the skill directory, use that path 
 
 1. Verify configuration: require `GITCODE_TOKEN` and explicit `GITCODE_OWNER`/`GITCODE_REPO` or equivalent `config.json` values. Do not rely on the built-in default repository unless the user explicitly wants it.
 
-2. Generate agent prompts by running the reviewer script with `--auto-review --dry-run --force`:
+2. Ask the user which language to use for public review comments: English (`en`) or Chinese (`zh`). If the user has already specified a preference, use it directly.
+
+3. If the project provides a review guide, pass it with `--review-guide <path>`. This injects the guide into every generated agent prompt and records guide metadata in the prompts JSON.
+
+4. Generate agent prompts without writing temp files:
    ```bash
-   node <skill-dir>/scripts/gitcode-reviewer.js --pr <pr-number> --auto-review --dry-run --force
+   node <skill-dir>/scripts/gitcode-reviewer.js --pr <pr-number> --auto-review --prompts-stdout --dry-run --force --comment-language <en|zh> [--review-guide <path>]
    ```
-   This saves prompts to `.temp-review/pr-<pr-number>-prompts.json`.
+   Read the JSON between `---BEGIN_GITCODE_REVIEW_PROMPTS_JSON---` and `---END_GITCODE_REVIEW_PROMPTS_JSON---`.
 
-3. Read the prompts JSON file at `.temp-review/pr-<pr-number>-prompts.json`.
-
-4. Execute each agent prompt in parallel with the available agent/subagent mechanism:
+5. Execute each agent prompt in parallel with the available agent/subagent mechanism:
    - bug-scanner-diff (agents[0])
    - bug-scanner-diff-2 (agents[1])
    - code-analyzer (agents[2])
    - semantic-analyzer (agents[3])
    - python-classmethod-checker (agents[4]) only when the PR touches Python class or `@classmethod` code.
 
-   Tell each agent: "Read the prompts file, follow your specific agent prompt, and output issues as JSON."
+   Tell each agent: "Read your specific prompt from the prompts JSON, follow it, and output issues as JSON."
 
-5. Collect all issues from agent outputs. Combine into a single JSON array and save to `.temp-review/pr-<pr-number>-issues.json`:
+6. Collect all issues from agent outputs. Combine into a single JSON array:
    ```json
    [{"file":"path","line":42,"type":"bug","severity":"error","confidence":90,"title":"title","description":"desc","contextCode":"code","fix":{"code":"fix","explanation":"why"}}]
    ```
 
-6. Feed issues back to the reviewer script for validation and posting:
+7. Preview formatted comments without posting by piping issues through stdin:
    ```bash
-   node <skill-dir>/scripts/gitcode-reviewer.js --pr <pr-number> --issues-from-json .temp-review/pr-<pr-number>-issues.json
+   printf '%s' '<issues-json-array>' | node <skill-dir>/scripts/gitcode-reviewer.js --pr <pr-number> --issues-from-stdin --comment-language <en|zh>
    ```
-   For preview only (no posting), add --dry-run. For speed, add --skip-validation.
+   For speed, add `--skip-validation`.
 
-7. Clean up temp files:
+8. Ask the user to approve each review point before posting. Do not post comments unless the user explicitly approves. To post selected comments:
    ```bash
-   rm -rf .temp-review
+   printf '%s' '<issues-json-array>' | node <skill-dir>/scripts/gitcode-reviewer.js --pr <pr-number> --issues-from-stdin --post --approve 1,3 --comment-language <en|zh>
    ```
+   To post all comments only after the user has explicitly approved all comments in advance, use `--approve-all`. For an interactive per-comment confirmation, use `--post` without `--approve` flags in a TTY.
 
-8. Summarize the review results for the user — how many issues found, severity levels, key findings.
+9. Summarize the review results for the user — how many issues found, severity levels, key findings.
+
+Temporary files are disabled by default. Use `--write-temp` only for debugging local prompt files.
 
 ## Other available scripts
 
 - Create PR: `node <skill-dir>/scripts/create-pr.js`
 - Update PR: `node <skill-dir>/scripts/update-pr.js`
 - Smart PR description: `node <skill-dir>/scripts/generate-smart-pr-desc.js`
+- Preview matching PR comments before deletion:
+  ```bash
+  node <skill-dir>/scripts/delete-pr-comments.js --pr <pr-number> --all-ai
+  node <skill-dir>/scripts/delete-pr-comments.js --pr <pr-number> --comment-id <comment-id>
+  ```
+- Delete matching PR comments only after explicit user approval:
+  ```bash
+  node <skill-dir>/scripts/delete-pr-comments.js --pr <pr-number> --comment-id <comment-id> --ui-auth --yes
+  node <skill-dir>/scripts/delete-pr-comments.js --pr <pr-number> --all-ai --ui-auth --yes
+  ```
+  Use `--ui-auth` when the public GitCode API returns `405 METHOD_NOT_ALLOWED`; it uses the SDK browser-auth flow and may open a GitCode login browser once. GitCode may refuse to delete discussion root comments that already have replies.

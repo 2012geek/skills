@@ -97,6 +97,14 @@ class AgentRunner {
     // 支持 { context, summary } 格式
     const prContext = context.context || context;
     const summary = context.summary || context.summary;
+    const reviewGuide = context.reviewGuide;
+
+    if (reviewGuide && reviewGuide.content) {
+      prompt += `\n\n## Project-Specific Review Guide\n\n`;
+      prompt += `Source: ${reviewGuide.path || 'inline review guide'}\n\n`;
+      prompt += `${reviewGuide.content}\n\n`;
+      prompt += `Apply this guide as project-specific review policy. Prioritize concrete correctness, data integrity, deployment, security, and maintainability risks. Do not report style-only issues unless they create one of those risks.\n`;
+    }
 
     // 添加上下文信息
     if (prContext.pr) {

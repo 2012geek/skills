@@ -24,3 +24,36 @@ describe('GitCodeAPI.calculatePosition', () => {
     expect(api.calculatePosition(patch, 21, false)).toBe(2);
   });
 });
+
+describe('GitCodeAPI.deletePRComment', () => {
+  test('uses the GitCode PR comments DELETE endpoint', async () => {
+    const api = createApi();
+    const calls = [];
+    api.request = async (endpoint, options) => {
+      calls.push({ endpoint, options });
+      return null;
+    };
+
+    await api.deletePRComment(12, 34);
+
+    expect(calls).toEqual([
+      {
+        endpoint: '/api/v5/repos/owner/repo/pulls/12/comments/34',
+        options: { method: 'DELETE' }
+      }
+    ]);
+  });
+
+  test('deleteComment aliases deletePRComment', async () => {
+    const api = createApi();
+    const calls = [];
+    api.request = async (endpoint, options) => {
+      calls.push({ endpoint, options });
+      return null;
+    };
+
+    await api.deleteComment(12, 34);
+
+    expect(calls[0].options.method).toBe('DELETE');
+  });
+});
