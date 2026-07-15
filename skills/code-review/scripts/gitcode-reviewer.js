@@ -1054,6 +1054,7 @@ async function main() {
     config.codeReview.confidenceThreshold = options.threshold;
   }
 
+  // Resolve review guide: CLI flag > config.json
   const reviewGuidePath = options.reviewGuidePath || config.codeReview.reviewGuidePath;
   if (reviewGuidePath) {
     try {

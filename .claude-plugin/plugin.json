@@ -7,6 +7,5 @@
   "repository": "https://github.com/2012geek/skills",
   "license": "MIT",
   "keywords": ["gitcode", "code-review", "ci", "pr", "automation"],
-  "skills": "./skills/",
-  "hooks": "./hooks/hooks.json"
+  "skills": "./skills/"
 }

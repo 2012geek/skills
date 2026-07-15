@@ -29,10 +29,13 @@ export GITCODE_BASE_URL=https://api.gitcode.com
   "codeReview": {
     "confidenceThreshold": 80,
     "skipValidation": false,
-    "commentLanguage": "en"
+    "commentLanguage": "en",
+    "reviewGuidePath": "path/to/review-guide.md"
   }
 }
 ```
+
+When `reviewGuidePath` is set in config.json, the reviewer auto-loads it — no need to pass `--review-guide` on the CLI. This enables **config-based composition**: projects configure their review guide and language preference in config.json, and this skill picks them up automatically.
 
 When running from a plugin host that exposes the skill directory, use that path directly, for example `${CLAUDE_SKILL_DIR}/scripts/gitcode-reviewer.js`. Otherwise run the script by absolute path or from a checkout containing `skills/code-review`.
 
@@ -40,9 +43,14 @@ When running from a plugin host that exposes the skill directory, use that path 
 
 1. Verify configuration: require `GITCODE_TOKEN` and explicit `GITCODE_OWNER`/`GITCODE_REPO` or equivalent `config.json` values. Do not rely on the built-in default repository unless the user explicitly wants it.
 
-2. Ask the user which language to use for public review comments: English (`en`) or Chinese (`zh`). If the user has already specified a preference, use it directly.
+2. Resolve comment language:
+   - If `codeReview.commentLanguage` is set in `config.json`, use it directly.
+   - Else ask the user which language to use for public review comments: English (`en`) or Chinese (`zh`).
 
-3. If the project provides a review guide, pass it with `--review-guide <path>`. This injects the guide into every generated agent prompt and records guide metadata in the prompts JSON.
+3. Resolve review guide:
+   - If `codeReview.reviewGuidePath` is set in `config.json`, use it directly.
+   - Else ask the user if they want to use a project-specific review guide, and which file to use.
+   - If no guide is provided, proceed without one.
 
 4. Generate agent prompts without writing temp files:
    ```bash
