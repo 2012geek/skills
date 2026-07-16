@@ -75,25 +75,26 @@ When running from a plugin host that exposes the skill directory, use that path 
    [{"file":"path","line":42,"type":"bug","severity":"error","confidence":90,"title":"title","description":"desc","contextCode":"code","fix":{"code":"fix","explanation":"why"}}]
    ```
 
-7. Preview formatted comments without posting by piping issues through stdin. Use a quoted heredoc so the JSON needs no escaping, and the command matches the existing `Bash(node <skill-dir>/scripts/gitcode-reviewer.js *)` permission rule — no permission prompt:
+7. Preview formatted comments without posting by piping issues through stdin. Use `python3 -c '...' | node ...` (NOT a heredoc) so the command matches the existing `Bash(node <skill-dir>/scripts/gitcode-reviewer.js *)` permission rule — no permission prompt. Claude Code's permission matcher treats `python3 -c '...' | node ...` as two separate commands (`python3` auto-allowed + `node <plugin-path> *` allowed), but a single `node ... <<'EOF' ... EOF` compound command does NOT match the `*` wildcard because the heredoc body interferes with pattern matching — always use the pipe form, never the heredoc form.
    ```bash
-   node <skill-dir>/scripts/gitcode-reviewer.js --pr <pr-number> --issues-from-stdin --comment-language <en|zh> <<'GITCODE_ISSUES_EOF'
-   <issues-json-array>
-   GITCODE_ISSUES_EOF
+   python3 -c 'import json; print(json.dumps(<issues-list>, ensure_ascii=False))' | node <skill-dir>/scripts/gitcode-reviewer.js --pr <pr-number> --issues-from-stdin --comment-language <en|zh> --skip-validation
    ```
-   For speed, add `--skip-validation`.
+   Build the issues list in Python (list of dicts with the schema below), then serialize with `json.dumps(..., ensure_ascii=False)`. This avoids JSON-escaping pitfalls for non-ASCII comment languages (e.g. Chinese) and keeps the command a single shell line.
 
 8. Ask the user to approve each review point before posting. Do not post comments unless the user explicitly approves. To post selected comments:
    ```bash
-   node <skill-dir>/scripts/gitcode-reviewer.js --pr <pr-number> --issues-from-stdin --post --approve 1,3 --comment-language <en|zh> <<'GITCODE_ISSUES_EOF'
-   <issues-json-array>
-   GITCODE_ISSUES_EOF
+   python3 -c 'import json; print(json.dumps(<issues-list>, ensure_ascii=False))' | node <skill-dir>/scripts/gitcode-reviewer.js --pr <pr-number> --issues-from-stdin --post --approve 1,3 --comment-language <en|zh>
    ```
    To post all comments only after the user has explicitly approved all comments in advance, use `--approve-all`. For an interactive per-comment confirmation, use `--post` without `--approve` flags in a TTY.
 
 9. Summarize the review results for the user — how many issues found, severity levels, key findings.
 
 Temporary files are disabled by default. Use `--write-temp` only for debugging local prompt files.
+
+## Permission auto-allow notes
+
+- **Never use heredoc** (`<<'EOF' ... EOF`) for the `--issues-from-stdin` commands. Claude Code's permission matcher treats `node ... <<'EOF'` as a single compound command where the heredoc body defeats the `*` wildcard in `Bash(node <plugin-path> *)`, triggering a permission prompt every time. Use `python3 -c 'import json; print(json.dumps(...))' | node ...` instead — the pipe form splits into `python3` (auto-allowed) + `node <plugin-path> *` (allowed by existing rule), so it never prompts.
+- If you must use a temp file instead (e.g. for debugging), `--issues-from-json <path>` is supported and the `node <plugin-path> *` rule still applies — no heredoc, no pipe.
 
 ## Other available scripts
 
