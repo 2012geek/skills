@@ -9,7 +9,7 @@ Review a GitCode pull request using this skill's Node.js scripts and bundled age
 
 ## Configuration
 
-Use either environment variables or a `config.json` in the current working directory:
+Use either environment variables or a config file in the current working directory. The reviewer checks `gitcode-review.config.json` first, then falls back to `config.json`:
 
 ```bash
 export GITCODE_TOKEN=<token>
@@ -41,14 +41,14 @@ When running from a plugin host that exposes the skill directory, use that path 
 
 ## Steps
 
-1. Verify configuration: require `GITCODE_TOKEN` and explicit `GITCODE_OWNER`/`GITCODE_REPO` or equivalent `config.json` values. Do not rely on the built-in default repository unless the user explicitly wants it.
+1. Verify configuration: require `GITCODE_TOKEN` and explicit `GITCODE_OWNER`/`GITCODE_REPO` or equivalent config values. Do not rely on the built-in default repository unless the user explicitly wants it.
 
 2. Resolve comment language:
-   - If `codeReview.commentLanguage` is set in `config.json`, use it directly.
+   - If `codeReview.commentLanguage` is set in config, use it directly.
    - Else ask the user which language to use for public review comments: English (`en`) or Chinese (`zh`).
 
 3. Resolve review guide:
-   - If `codeReview.reviewGuidePath` is set in `config.json`, use it directly.
+   - If `codeReview.reviewGuidePath` is set in config, use it directly.
    - Else ask the user if they want to use a project-specific review guide, and which file to use.
    - If no guide is provided, proceed without one.
 

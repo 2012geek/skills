@@ -24,7 +24,10 @@ const path = require('path');
 const SKILL_ROOT = path.resolve(__dirname, '..');
 const { GitCodeAPI, CommentFormatter, AgentRunner, ConfigLoader } = require(path.join(SKILL_ROOT, 'lib'));
 
-const CONFIG_PATH = path.join(process.cwd(), 'config.json');
+// Prefer gitcode-review.config.json over generic config.json to avoid conflicts
+const CONFIG_PATH = require('fs').existsSync(path.join(process.cwd(), 'gitcode-review.config.json'))
+  ? path.join(process.cwd(), 'gitcode-review.config.json')
+  : path.join(process.cwd(), 'config.json');
 
 const DEFAULT_CONFIG = {
   gitcode: {
