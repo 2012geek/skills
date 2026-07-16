@@ -72,15 +72,19 @@ When running from a plugin host that exposes the skill directory, use that path 
    [{"file":"path","line":42,"type":"bug","severity":"error","confidence":90,"title":"title","description":"desc","contextCode":"code","fix":{"code":"fix","explanation":"why"}}]
    ```
 
-7. Preview formatted comments without posting by piping issues through stdin:
+7. Preview formatted comments without posting by piping issues through stdin. Use a quoted heredoc so the JSON needs no escaping, and the command matches the existing `Bash(node <skill-dir>/scripts/gitcode-reviewer.js *)` permission rule — no permission prompt:
    ```bash
-   printf '%s' '<issues-json-array>' | node <skill-dir>/scripts/gitcode-reviewer.js --pr <pr-number> --issues-from-stdin --comment-language <en|zh>
+   node <skill-dir>/scripts/gitcode-reviewer.js --pr <pr-number> --issues-from-stdin --comment-language <en|zh> <<'GITCODE_ISSUES_EOF'
+   <issues-json-array>
+   GITCODE_ISSUES_EOF
    ```
    For speed, add `--skip-validation`.
 
 8. Ask the user to approve each review point before posting. Do not post comments unless the user explicitly approves. To post selected comments:
    ```bash
-   printf '%s' '<issues-json-array>' | node <skill-dir>/scripts/gitcode-reviewer.js --pr <pr-number> --issues-from-stdin --post --approve 1,3 --comment-language <en|zh>
+   node <skill-dir>/scripts/gitcode-reviewer.js --pr <pr-number> --issues-from-stdin --post --approve 1,3 --comment-language <en|zh> <<'GITCODE_ISSUES_EOF'
+   <issues-json-array>
+   GITCODE_ISSUES_EOF
    ```
    To post all comments only after the user has explicitly approved all comments in advance, use `--approve-all`. For an interactive per-comment confirmation, use `--post` without `--approve` flags in a TTY.
 
