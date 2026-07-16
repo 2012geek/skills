@@ -41,7 +41,10 @@ When running from a plugin host that exposes the skill directory, use that path 
 
 ## Steps
 
-1. Verify configuration: require `GITCODE_TOKEN` and explicit `GITCODE_OWNER`/`GITCODE_REPO` or equivalent config values. Do not rely on the built-in default repository unless the user explicitly wants it.
+1. Verify configuration. Use separate tool calls — do not combine `if`/`echo`/`cat` into one bash command, since combined commands don't match permission rules and will prompt.
+   - Check the token with a narrow echo: `echo "GITCODE_TOKEN set: ${GITCODE_TOKEN:+yes}"` (no value printed — just whether it's set).
+   - Read `gitcode-review.config.json` (or `config.json`) with the Read tool to confirm `owner`, `repo`, `commentLanguage`, and `reviewGuidePath`. Do not `cat` it.
+   - If `GITCODE_TOKEN` is unset, stop and tell the user to export it. Do not rely on the built-in default repository unless the user explicitly wants it.
 
 2. Resolve comment language:
    - If `codeReview.commentLanguage` is set in config, use it directly.
