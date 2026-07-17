@@ -179,6 +179,43 @@ function defaultPromptsPath(prNumber) {
   return path.join(defaultReviewDir(prNumber), 'prompts.json');
 }
 
+function safeAgentFileName(name) {
+  return String(name).replace(/[^a-zA-Z0-9_-]+/g, '-');
+}
+
+function selectReviewAgentNames(context) {
+  const agentNames = ['bug-scanner-diff', 'bug-scanner-diff-2', 'code-analyzer', 'semantic-analyzer'];
+  const needsPythonClassChecker = (context.files || []).some(file => {
+    if (!String(file.filename || '').endsWith('.py')) return false;
+    const patch = typeof file.patch === 'string' ? file.patch : (file.patch && file.patch.diff) || '';
+    const addedLines = patch.split('\n')
+      .filter(line => line.startsWith('+') && !line.startsWith('+++'))
+      .map(line => line.slice(1))
+      .join('\n');
+    const fullContent = typeof file.fullContent === 'string' ? file.fullContent : '';
+    return /(^|\n)\s*(?:class\s+\w+|@classmethod\b)/m.test(addedLines)
+      || /(^|\n)\s*@classmethod\b/m.test(fullContent)
+      || /(^|\n)\s*class\s+\w+/m.test(fullContent);
+  });
+  if (needsPythonClassChecker) agentNames.push('python-classmethod-checker');
+  return agentNames;
+}
+
+async function writePromptBundle(manifestPath, agentResults) {
+  const reviewDir = path.dirname(manifestPath);
+  await fs.mkdir(reviewDir, { recursive: true });
+  const agents = [];
+  for (const [index, agent] of agentResults.agents.entries()) {
+    const promptFile = `prompt-${index}-${safeAgentFileName(agent.name)}.md`;
+    const issueFile = `issue-${index}.json`;
+    await fs.writeFile(path.join(reviewDir, promptFile), agent.prompt, 'utf-8');
+    agents.push({ index, name: agent.name, model: agent.model, promptPath: promptFile, issuePath: issueFile, promptLength: agent.prompt.length });
+  }
+  const manifest = { formatVersion: 2, pr: agentResults.pr, summary: agentResults.summary, reviewGuide: agentResults.reviewGuide, agents, generatedAt: agentResults.generatedAt };
+  await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf-8');
+  return manifest;
+}
+
 /**
  * GitCode PR 审查器
  */
@@ -489,7 +526,11 @@ class GitCodeReviewer {
     console.log('Step 4: 并行审查 (5 个代理)...');
 
     // 准备代理上下文
-    const agentContext = { context, summary };
+    const agentContext = {
+      context,
+      summary,
+      commentLanguage: this.config.codeReview.commentLanguage || null
+    };
 
     // 运行代理获取 prompts
     const [agent1, agent2, agent3, agent4, agent5] = await Promise.all([
@@ -914,9 +955,14 @@ class GitCodeReviewer {
       outputPath = promptsToActive
         ? (options.promptsTo || defaultPromptsPath(prNumber))
         : path.join(process.cwd(), `.temp-review`, `pr-${prNumber}-prompts.json`);
-      await fs.mkdir(path.dirname(outputPath), { recursive: true });
-      await fs.writeFile(outputPath, JSON.stringify(agentResults, null, 2), 'utf-8');
-      console.log(`\n📋 已保存 prompts 到: ${outputPath}`);
+      if (promptsToActive) {
+        await writePromptBundle(outputPath, agentResults);
+        console.log(`\n📋 已保存 prompt bundle 到: ${path.dirname(outputPath)}`);
+      } else {
+        await fs.mkdir(path.dirname(outputPath), { recursive: true });
+        await fs.writeFile(outputPath, JSON.stringify(agentResults, null, 2), 'utf-8');
+        console.log(`\n📋 已保存 prompts 到: ${outputPath}`);
+      }
     }
 
     console.log(`\n📊 统计:`);
@@ -961,15 +1007,10 @@ class GitCodeReviewer {
     const agentContext = {
       context,
       summary,
-      reviewGuide: this.config.codeReview.reviewGuide || null
+      reviewGuide: this.config.codeReview.reviewGuide || null,
+      commentLanguage: this.config.codeReview.commentLanguage || null
     };
-    const agentNames = [
-      'bug-scanner-diff',
-      'bug-scanner-diff-2',
-      'code-analyzer',
-      'semantic-analyzer',
-      'python-classmethod-checker'
-    ];
+    const agentNames = selectReviewAgentNames(context);
 
     const agents = [];
     for (const agentName of agentNames) {
@@ -1207,7 +1248,7 @@ async function main() {
 }
 
 // 导出
-module.exports = { GitCodeReviewer };
+module.exports = { GitCodeReviewer, writePromptBundle, selectReviewAgentNames };
 
 // 运行主函数
 if (require.main === module) {

@@ -6,6 +6,17 @@
 const fs = require('fs').promises;
 const path = require('path');
 
+const REVIEW_EXECUTION_BOUNDARIES = `## Review Execution Boundaries
+
+- Treat the supplied PR metadata, diff, and repository files as the complete review input.
+- Do not run \`git fetch\`, \`git clone\`, \`git worktree\`, or any command that changes Git configuration or repository state.
+- Do not create or use paths under \`/tmp\`. Do not create a separate checkout or worktree.
+- Do not access the network or install dependencies.
+- Keep any required review artifacts under \`.tmp/gitcode-review/pr-<PR-number>/\` in the current project.
+- Prefer read-only file tools. Do not use Bash or Python merely to extract prompt text or write the findings JSON.
+- If the supplied context is insufficient, omit the uncertain finding instead of acquiring additional repository state.
+`;
+
 /**
  * 代理运行器类
  */
@@ -92,7 +103,7 @@ class AgentRunner {
    * 构建 prompt
    */
   buildPrompt(agent, context) {
-    let prompt = agent.definition;
+    let prompt = `${REVIEW_EXECUTION_BOUNDARIES}\n${agent.definition}`;
 
     // 支持 { context, summary } 格式
     const prContext = context.context || context;
@@ -123,12 +134,10 @@ class AgentRunner {
         if (file.patch) {
           const patch = typeof file.patch === 'string' ? file.patch : (file.patch.diff || '');
           if (patch) {
-            // 🔧 方案3: 只显示 diff，限制长度避免行号混淆
-            // 文件内容预览会显示错误的行号（预览行号 vs diff行号）
-            const maxLines = 500; // 限制最大行数
-            const patchLines = patch.split('\n');
-            const previewLines = patchLines.slice(0, Math.min(maxLines, patchLines.length));
-            prompt += `**Diff**:\n\`\`\`diff\n${previewLines.join('\n')}${patchLines.length > maxLines ? '\n...' : ''}\n\`\`\`\n\n`;
+            // Include the complete diff. Silent truncation creates review blind spots,
+            // especially because delegated agents are intentionally forbidden from
+            // fetching or creating another checkout to recover missing context.
+            prompt += `**Diff**:\n\`\`\`diff\n${patch}\n\`\`\`\n\n`;
           }
         }
 
@@ -147,6 +156,20 @@ class AgentRunner {
       prompt += `**行号**: ${context.issue.line}\n`;
       prompt += `**问题**: ${context.issue.title}\n`;
       prompt += `**描述**: ${context.issue.description}\n`;
+    }
+
+    // Output language directive. CommentFormatter only localizes UI labels
+    // (官方参考资料 / 上下文代码 / 修复方案); the issue title/description/
+    // fix.explanation are emitted verbatim from agent output. To produce
+    // Chinese review comments end-to-end, the agent must write these fields
+    // in Chinese at source.
+    const language = (context.commentLanguage || '').toString().toLowerCase();
+    if (language === 'zh' || language === 'cn' || language === 'chinese' || language === '中文') {
+      prompt += `\n\n## Output Language\n\n`;
+      prompt += `Write the \`title\`, \`description\`, and \`fix.explanation\` fields in **简体中文**. `;
+      prompt += `Use technical Chinese common in ML / RL / VLA / robotics contexts (e.g. 张量, 梯度, 微调, 推理, 数据加载, 损失计算). `;
+      prompt += `Keep \`file\`, \`line\`, \`contextCode\`, and \`fix.code\` fields as-is — paths and code are language-neutral. `;
+      prompt += `Do not translate identifier names, error messages, or commit hashes inside \`contextCode\`/\`fix.code\`; only the prose fields become Chinese.\n`;
     }
 
     return prompt;

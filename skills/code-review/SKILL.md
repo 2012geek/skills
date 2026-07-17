@@ -49,17 +49,18 @@ When running from a plugin host that exposes the skill directory, use that path 
 2. Resolve comment language:
    - If `codeReview.commentLanguage` is set in config, use it directly.
    - Else ask the user which language to use for public review comments: English (`en`) or Chinese (`zh`).
+   - The language controls **both** the prose fields agents write (`title`, `description`, `fix.explanation`) **and** the UI labels `CommentFormatter` emits (`官方参考资料` / `上下文代码` / `修复方案` for `zh`). Code snippets, file paths, and identifier names are always left as-is.
 
 3. Resolve review guide:
    - If `codeReview.reviewGuidePath` is set in config, use it directly.
    - Else ask the user if they want to use a project-specific review guide, and which file to use.
    - If no guide is provided, proceed without one.
 
-4. Generate agent prompts to a file. Pass `--prompts-to` with no path to use the default scratch location `.tmp/gitcode-review/pr-<pr-number>/prompts.json` under the current working directory:
+4. Generate one prompt file per agent. Pass `--prompts-to` with no path to use the default scratch directory `.tmp/gitcode-review/pr-<pr-number>/` under the current working directory:
    ```bash
    node <skill-dir>/scripts/gitcode-reviewer.js --pr <pr-number> --auto-review --prompts-to --dry-run --force --comment-language <en|zh> [--review-guide <path>]
    ```
-   The script creates the directory and writes `prompts.json`. No stdout parsing is needed — agents read the file directly.
+   The script writes a small `prompts.json` manifest plus `prompt-<i>-<agent-name>.md` files. No JSON prompt extraction or stdout parsing is needed.
 
 5. Execute each agent prompt in parallel with the available agent/subagent mechanism:
    - bug-scanner-diff (agents[0])
@@ -68,7 +69,9 @@ When running from a plugin host that exposes the skill directory, use that path 
    - semantic-analyzer (agents[3])
    - python-classmethod-checker (agents[4]) only when the PR touches Python class or `@classmethod` code.
 
-   Tell each agent: "Use the `Read` tool to read `.tmp/gitcode-review/pr-<pr-number>/prompts.json`, extract `agents[<i>].prompt`, follow it, then use the `Write` tool to write your findings as a JSON array to `.tmp/gitcode-review/pr-<pr-number>/issue-<i>.json`."
+   Tell each agent: "Use the `Read` tool to read `.tmp/gitcode-review/pr-<pr-number>/prompt-<i>-<agent-name>.md`, follow it, then use the `Write` tool to write your findings as a JSON array to `.tmp/gitcode-review/pr-<pr-number>/issue-<i>.json`. Do not create a Git worktree, fetch or clone repositories, change Git configuration, use `/tmp`, access the network, or write outside `.tmp/gitcode-review/pr-<pr-number>/`."
+
+   These boundaries are mandatory. If supplied context is insufficient, omit the uncertain finding rather than create a checkout or acquire more state.
 
    The issues JSON schema for each file (a top-level array, or an object with an `issues` array — both forms are accepted by `--collect-issues-from`):
    ```json
