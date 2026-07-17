@@ -55,11 +55,11 @@ When running from a plugin host that exposes the skill directory, use that path 
    - Else ask the user if they want to use a project-specific review guide, and which file to use.
    - If no guide is provided, proceed without one.
 
-4. Generate agent prompts without writing temp files:
+4. Generate agent prompts to a file. Pass `--prompts-to` with no path to use the default scratch location `.tmp/gitcode-review/pr-<pr-number>/prompts.json` under the current working directory:
    ```bash
-   node <skill-dir>/scripts/gitcode-reviewer.js --pr <pr-number> --auto-review --prompts-stdout --dry-run --force --comment-language <en|zh> [--review-guide <path>]
+   node <skill-dir>/scripts/gitcode-reviewer.js --pr <pr-number> --auto-review --prompts-to --dry-run --force --comment-language <en|zh> [--review-guide <path>]
    ```
-   Read the JSON between `---BEGIN_GITCODE_REVIEW_PROMPTS_JSON---` and `---END_GITCODE_REVIEW_PROMPTS_JSON---`.
+   The script creates the directory and writes `prompts.json`. No stdout parsing is needed — agents read the file directly.
 
 5. Execute each agent prompt in parallel with the available agent/subagent mechanism:
    - bug-scanner-diff (agents[0])
@@ -68,33 +68,33 @@ When running from a plugin host that exposes the skill directory, use that path 
    - semantic-analyzer (agents[3])
    - python-classmethod-checker (agents[4]) only when the PR touches Python class or `@classmethod` code.
 
-   Tell each agent: "Read your specific prompt from the prompts JSON, follow it, and output issues as JSON."
+   Tell each agent: "Use the `Read` tool to read `.tmp/gitcode-review/pr-<pr-number>/prompts.json`, extract `agents[<i>].prompt`, follow it, then use the `Write` tool to write your findings as a JSON array to `.tmp/gitcode-review/pr-<pr-number>/issue-<i>.json`."
 
-6. Collect all issues from agent outputs. Combine into a single JSON array:
+   The issues JSON schema for each file (a top-level array, or an object with an `issues` array — both forms are accepted by `--collect-issues-from`):
    ```json
    [{"file":"path","line":42,"type":"bug","severity":"error","confidence":90,"title":"title","description":"desc","contextCode":"code","fix":{"code":"fix","explanation":"why"}}]
    ```
 
-7. Preview formatted comments without posting by piping issues through stdin. Use `python3 -c '...' | node ...` (NOT a heredoc) so the command matches the existing `Bash(node <skill-dir>/scripts/gitcode-reviewer.js *)` permission rule — no permission prompt. Claude Code's permission matcher treats `python3 -c '...' | node ...` as two separate commands (`python3` auto-allowed + `node <plugin-path> *` allowed), but a single `node ... <<'EOF' ... EOF` compound command does NOT match the `*` wildcard because the heredoc body interferes with pattern matching — always use the pipe form, never the heredoc form.
+6. Preview formatted comments without posting. The script aggregates every `issue-*.json` in the directory (skipping `prompts.json` and `issues-combined.json`), so no manual JSON merging is needed:
    ```bash
-   python3 -c 'import json; print(json.dumps(<issues-list>, ensure_ascii=False))' | node <skill-dir>/scripts/gitcode-reviewer.js --pr <pr-number> --issues-from-stdin --comment-language <en|zh> --skip-validation
+   node <skill-dir>/scripts/gitcode-reviewer.js --pr <pr-number> --collect-issues-from .tmp/gitcode-review/pr-<pr-number> --comment-language <en|zh> --skip-validation
    ```
-   Build the issues list in Python (list of dicts with the schema below), then serialize with `json.dumps(..., ensure_ascii=False)`. This avoids JSON-escaping pitfalls for non-ASCII comment languages (e.g. Chinese) and keeps the command a single shell line.
 
-8. Ask the user to approve each review point before posting. Do not post comments unless the user explicitly approves. To post selected comments:
+7. Ask the user to approve each review point before posting. Do not post comments unless the user explicitly approves. To post all approved comments:
    ```bash
-   python3 -c 'import json; print(json.dumps(<issues-list>, ensure_ascii=False))' | node <skill-dir>/scripts/gitcode-reviewer.js --pr <pr-number> --issues-from-stdin --post --approve 1,3 --comment-language <en|zh>
+   node <skill-dir>/scripts/gitcode-reviewer.js --pr <pr-number> --collect-issues-from .tmp/gitcode-review/pr-<pr-number> --post --approve-all --comment-language <en|zh>
    ```
-   To post all comments only after the user has explicitly approved all comments in advance, use `--approve-all`. For an interactive per-comment confirmation, use `--post` without `--approve` flags in a TTY.
+   For selective posting by 1-based index, use `--approve 1,3` instead of `--approve-all`. For an interactive per-comment confirmation, use `--post` without `--approve` flags in a TTY.
 
-9. Summarize the review results for the user — how many issues found, severity levels, key findings.
+8. Summarize the review results for the user — how many issues found, severity levels, key findings.
 
-Temporary files are disabled by default. Use `--write-temp` only for debugging local prompt files.
+The `.tmp/gitcode-review/pr-<pr-number>/` scratch directory should be in the project's `.gitignore` (a single `.tmp/` line covers it). Each PR gets its own subdirectory, so cross-PR state never collides.
 
 ## Permission auto-allow notes
 
-- **Never use heredoc** (`<<'EOF' ... EOF`) for the `--issues-from-stdin` commands. Claude Code's permission matcher treats `node ... <<'EOF'` as a single compound command where the heredoc body defeats the `*` wildcard in `Bash(node <plugin-path> *)`, triggering a permission prompt every time. Use `python3 -c 'import json; print(json.dumps(...))' | node ...` instead — the pipe form splits into `python3` (auto-allowed) + `node <plugin-path> *` (allowed by existing rule), so it never prompts.
-- If you must use a temp file instead (e.g. for debugging), `--issues-from-json <path>` is supported and the `node <plugin-path> *` rule still applies — no heredoc, no pipe.
+- The entire flow is now three plain `node <skill-dir>/scripts/gitcode-reviewer.js ...` commands plus `Read`/`Write` tool calls. No `python3 -c`, no heredoc, no shell pipes. As long as `Bash(node <skill-dir>/scripts/gitcode-reviewer.js *)` (or the broader `Bash(node *)`) is in the project's `settings.json` allowlist, there are **zero** permission prompts.
+- **Never** inline JSON via `python3 -c '...' | node ...` or `node ... <<'EOF' ... EOF'`. Both forms trigger Claude Code's safety checks (the first because `#` comments inside the quoted argument look like hidden arguments; the second because heredoc bodies defeat the `*` wildcard). Always write JSON with the `Write` tool — it doesn't go through the Bash permission layer at all.
+- The legacy `--prompts-stdout`, `--write-temp`, `--issues-from-stdin`, and `--issues-from-json` flags are still supported for backward compatibility and CI use, but the recommended flow uses `--prompts-to` and `--collect-issues-from`.
 
 ## Other available scripts
 

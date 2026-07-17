@@ -168,6 +168,17 @@ function parseApprovalList(value) {
     .filter(Number.isFinite));
 }
 
+// Default scratch dir under the project working directory so paths stay stable
+// across plugin upgrades (unlike paths under the plugin cache). Each PR gets
+// its own subdirectory to avoid cross-PR contamination.
+function defaultReviewDir(prNumber) {
+  return path.join(process.cwd(), '.tmp', 'gitcode-review', `pr-${prNumber}`);
+}
+
+function defaultPromptsPath(prNumber) {
+  return path.join(defaultReviewDir(prNumber), 'prompts.json');
+}
+
 /**
  * GitCode PR 审查器
  */
@@ -269,6 +280,20 @@ class GitCodeReviewer {
     console.log(`问题来源: ${jsonPath}\n`);
     // Step 4: 从 JSON 加载问题
     const issues = await this.step4_LoadFromJson(jsonPath);
+    return await this.reviewFromIssues(prNumber, issues, submitOptions);
+  }
+
+  /**
+   * 从目录聚合 agent 输出的 issues 并提交评论
+   * 跳过 Step 1-4，直接执行 Step 5-9
+   */
+  async reviewFromDir(prNumber, dirPath, submitOptions = {}) {
+    console.log(`\n${'='.repeat(60)}`);
+    console.log(`🔍 GitCode PR 审查工具（从目录聚合 issues）`);
+    console.log(`${'='.repeat(60)}`);
+    console.log(`审查 PR #${prNumber}`);
+    console.log(`问题来源目录: ${dirPath}\n`);
+    const issues = await this.step4_LoadFromDir(dirPath);
     return await this.reviewFromIssues(prNumber, issues, submitOptions);
   }
 
@@ -530,6 +555,47 @@ class GitCodeReviewer {
       console.error(`  ❌ 加载失败: ${error.message}`);
       return [];
     }
+  }
+
+  /**
+   * Step 4 替代方案: 从目录聚合所有 agent 的 issues
+   *
+   * 读取目录下所有 *.json（排除 prompts.json 等非 issues 文件），
+   * 将每个文件中的 issues 数组（或整个文件若是数组）合并后返回。
+   * 兼容 agent 输出 {issues: [...]} 或直接 [ {...}, {...} ] 两种形态。
+   */
+  async step4_LoadFromDir(dirPath) {
+    console.log(`Step 4: 从目录聚合 issues: ${dirPath} ...`);
+
+    let entries;
+    try {
+      entries = await fs.readdir(dirPath);
+    } catch (error) {
+      console.error(`  ❌ 无法读取目录: ${error.message}`);
+      return [];
+    }
+
+    const jsonFiles = entries.filter(f => f.endsWith('.json') && f !== 'prompts.json' && f !== 'issues-combined.json');
+    const allIssues = [];
+    for (const f of jsonFiles) {
+      const fp = path.join(dirPath, f);
+      try {
+        const content = await fs.readFile(fp, 'utf-8');
+        const parsed = JSON.parse(content);
+        const items = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.issues) ? parsed.issues : []);
+        if (items.length === 0) {
+          console.log(`  ⚠️  ${f}: 无 issues，跳过`);
+          continue;
+        }
+        console.log(`  ✅ ${f}: ${items.length} 个 issue`);
+        allIssues.push(...items);
+      } catch (error) {
+        console.error(`  ❌ ${f}: 解析失败 - ${error.message}`);
+      }
+    }
+
+    console.log(`  合计: ${allIssues.length} 个 issue\n`);
+    return allIssues;
   }
 
   /**
@@ -841,8 +907,13 @@ class GitCodeReviewer {
     const agentResults = await this.step4_GenerateAllPrompts(context, summary);
 
     let outputPath = null;
-    if (options.writeTemp) {
-      outputPath = path.join(process.cwd(), `.temp-review`, `pr-${prNumber}-prompts.json`);
+    // --prompts-to (with or without path) takes precedence; fall back to legacy --write-temp
+    const promptsToActive = options.promptsTo !== undefined;
+    const writePromptsToFile = promptsToActive || options.writeTemp;
+    if (writePromptsToFile) {
+      outputPath = promptsToActive
+        ? (options.promptsTo || defaultPromptsPath(prNumber))
+        : path.join(process.cwd(), `.temp-review`, `pr-${prNumber}-prompts.json`);
       await fs.mkdir(path.dirname(outputPath), { recursive: true });
       await fs.writeFile(outputPath, JSON.stringify(agentResults, null, 2), 'utf-8');
       console.log(`\n📋 已保存 prompts 到: ${outputPath}`);
@@ -859,8 +930,8 @@ class GitCodeReviewer {
       console.log('\n---BEGIN_GITCODE_REVIEW_PROMPTS_JSON---');
       console.log(JSON.stringify(agentResults, null, 2));
       console.log('---END_GITCODE_REVIEW_PROMPTS_JSON---');
-    } else if (!options.writeTemp) {
-      console.log('\nℹ️  未写入临时文件。需要机器可读 prompts 时请使用 --prompts-stdout；调试落盘请使用 --write-temp。');
+    } else if (!writePromptsToFile) {
+      console.log('\nℹ️  未写入临时文件。需要机器可读 prompts 时请使用 --prompts-to [path] 或 --prompts-stdout；调试落盘请使用 --write-temp。');
     }
 
     if (dryRun) {
@@ -949,6 +1020,9 @@ async function main() {
     noApproval: args.includes('--no-approval'),
     promptsStdout: args.includes('--prompts-stdout'),
     writeTemp: args.includes('--write-temp'),
+    // undefined = flag absent; '' = flag present, no path (use default); <path> = explicit
+    promptsTo: undefined,
+    collectIssuesFrom: null,
     threshold: null,
     issuesFromJson: null,
     approveList: null,
@@ -966,6 +1040,19 @@ async function main() {
   const issuesIndex = args.indexOf('--issues-from-json');
   if (issuesIndex !== -1 && args[issuesIndex + 1]) {
     options.issuesFromJson = args[issuesIndex + 1];
+  }
+
+  // 查找 --prompts-to 参数（可选路径，缺省走默认 .tmp/gitcode-review/pr-N/prompts.json）
+  const promptsToIndex = args.indexOf('--prompts-to');
+  if (promptsToIndex !== -1) {
+    const next = args[promptsToIndex + 1];
+    options.promptsTo = next && !next.startsWith('--') ? next : '';
+  }
+
+  // 查找 --collect-issues-from 参数（目录，读所有 *.json 合并）
+  const collectIndex = args.indexOf('--collect-issues-from');
+  if (collectIndex !== -1 && args[collectIndex + 1]) {
+    options.collectIssuesFrom = args[collectIndex + 1];
   }
 
   // 查找 --approve 参数
@@ -998,11 +1085,18 @@ async function main() {
     console.error('  # 完整流程（生成 prompts 供手动审查）');
     console.error('  node gitcode-reviewer.js --pr <number>');
     console.error('');
-    console.error('  # 自动审查模式（生成结构化 JSON prompts）');
+    console.error('  # 自动审查模式（生成结构化 JSON prompts 到文件，推荐）');
+    console.error('  node gitcode-reviewer.js --pr <number> --auto-review --prompts-to [<path>] --dry-run --force [--review-guide <path>] [--comment-language en|zh]');
+    console.error('  #   未传 <path> 时默认写到 .tmp/gitcode-review/pr-<N>/prompts.json');
+    console.error('');
+    console.error('  # 旧版输出到 stdout（仍可用，CI 场景）');
     console.error('  node gitcode-reviewer.js --pr <number> --auto-review --prompts-stdout [--review-guide <path>]');
     console.error('');
     console.error('  # DRY-RUN 模式（预览不提交）');
     console.error('  node gitcode-reviewer.js --pr <number> --dry-run');
+    console.error('');
+    console.error('  # 从目录聚合 agent 输出并预览评论（每个 agent 写一个 .json）');
+    console.error('  node gitcode-reviewer.js --pr <number> --collect-issues-from <dir> [--skip-validation] [--comment-language en|zh]');
     console.error('');
     console.error('  # 从 JSON 文件加载问题并预览评论');
     console.error('  node gitcode-reviewer.js --pr <number> --issues-from-json <path>');
@@ -1013,6 +1107,7 @@ async function main() {
     console.error('  # 提交已批准评论');
     console.error('  node gitcode-reviewer.js --pr <number> --issues-from-json <path> --post --approve 1,3 --comment-language en');
     console.error('  node gitcode-reviewer.js --pr <number> --issues-from-json <path> --post --approve-all --comment-language zh');
+    console.error('  node gitcode-reviewer.js --pr <number> --collect-issues-from <dir> --post --approve-all --comment-language zh');
     console.error('');
     console.error('  # 跳过验证');
     console.error('  node gitcode-reviewer.js --pr <number> --issues-from-json <path> --skip-validation');
@@ -1092,6 +1187,9 @@ async function main() {
       const input = await readStdin();
       const issues = JSON.parse(input);
       await reviewer.reviewFromIssues(options.prNumber, issues, options);
+    } else if (options.collectIssuesFrom) {
+      // 从目录聚合所有 agent 输出的 issues
+      await reviewer.reviewFromDir(options.prNumber, options.collectIssuesFrom, options);
     } else if (options.autoReview) {
       // 🔧 方案1: 自动执行所有 agents，输出结构化 JSON
       console.log('🤖 自动审查模式 - 执行所有 agents\n');
