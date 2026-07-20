@@ -299,10 +299,10 @@ async function submitIssuesFromJson(api, prNumber, jsonPath, noSubmit) {
         continue;
       }
 
-      // 计算 position
-      const position = api.calculatePosition(diffInfo.patch, issue.line, diffInfo.status === 'added');
-      if (position === null) {
-        console.log(`  ⚠️  跳过 ${issue.file}:${issue.line} (无法计算 position)`);
+      // GitCode DiffNote API 的 position 字段就是新文件真实行号
+      const position = issue.position || issue.line;
+      if (!position) {
+        console.log(`  ⚠️  跳过 ${issue.file} (无 line/position)`);
         continue;
       }
 

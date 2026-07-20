@@ -1,7 +1,7 @@
 {
   "name": "gitcode-tools",
   "description": "Multi-agent code review, CI auto-repair, PR management, and project monitoring for GitCode",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "author": { "name": "2012geek" },
   "homepage": "https://github.com/2012geek/skills",
   "repository": "https://github.com/2012geek/skills",

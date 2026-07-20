@@ -143,4 +143,31 @@ describe('CommentFormatter - referenceCategories', () => {
       expect(result).toContain('No issues found.');
     });
   });
+
+  describe('formatIssue position', () => {
+    let fmt;
+    beforeEach(() => { fmt = new CommentFormatter({}); });
+
+    test('position defaults to issue.line (new file line number)', () => {
+      const r = fmt.formatIssue({
+        file: 'a.py', line: 282, title: 't', description: 'd'
+      });
+      expect(r.position).toBe(282);
+    });
+
+    test('issue.position explicit override takes priority', () => {
+      const r = fmt.formatIssue({
+        file: 'a.py', line: 999, position: 42, title: 't', description: 'd'
+      });
+      expect(r.position).toBe(42);
+    });
+
+    test('patchInfo is ignored for position (position is just issue.line)', () => {
+      const r = fmt.formatIssue(
+        { file: 'a.py', line: 225, title: 't', description: 'd' },
+        { patch: 'fake patch content', status: 'modified' }
+      );
+      expect(r.position).toBe(225);
+    });
+  });
 });

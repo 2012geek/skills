@@ -11,20 +11,6 @@ function createApi() {
   });
 }
 
-describe('GitCodeAPI.calculatePosition', () => {
-  test('uses the new-file start line from hunk headers', () => {
-    const api = createApi();
-    const patch = [
-      '@@ -10,2 +20,3 @@',
-      ' existing line',
-      '+inserted line',
-      ' trailing context'
-    ].join('\n');
-
-    expect(api.calculatePosition(patch, 21, false)).toBe(2);
-  });
-});
-
 describe('GitCodeAPI.deletePRComment', () => {
   test('uses the GitCode PR comments DELETE endpoint', async () => {
     const api = createApi();
