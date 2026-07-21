@@ -11,7 +11,7 @@ const ctx = {
   owner: 'openeuler',
   repo: 'vla-factory',
   prNumber: 4,
-  checkoutDir: '/home/nice/.cache/gitcode-repair/openeuler-vla-factory-4',
+  checkoutDir: '/<project-root>/.tmp/code-review-repair/pr-4/checkout',
   status: { resolved: 0, total: 2, unresolved: 2, method: 'scrape' },
   prDiff: 'diff --git a/foo.py b/foo.py\n',
   comments: [{
@@ -24,7 +24,7 @@ const ctx = {
     url: 'https://gitcode.com/.../pull/4#discussion-abc-uuid',
     fileContent: 'line 87 context\n',
     fileDiff: 'diff --git a/foo.py\n',
-    absPath: '/home/nice/.cache/gitcode-repair/openeuler-vla-factory-4/foo.py'
+    absPath: '/<project-root>/.tmp/code-review-repair/pr-4/checkout/foo.py'
   }]
 };
 

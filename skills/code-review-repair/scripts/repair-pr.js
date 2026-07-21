@@ -21,20 +21,20 @@
 
 const path = require('path');
 const fs = require('fs');
-const os = require('os');
 const { execSync } = require('child_process');
 
 const libPath = path.join(__dirname, '..', 'lib');
 const { GitCodeAPIRepair } = require(path.join(libPath, 'gitcode-api-repair.js'));
 
-// Persistent checkout dir (NOT cleaned up between runs so --apply can re-read)
-function checkoutDir(owner, repo, prNumber) {
-  return path.join(os.homedir(), '.cache', 'gitcode-repair', `${owner}-${repo}-${prNumber}`);
-}
-
-// Scratch dir for context.json/fixes.json
+// Scratch dir for context.json/fixes.json AND the checkout (everything under project .tmp/)
 function scratchDir(prNumber) {
   return path.join(process.cwd(), '.tmp', 'code-review-repair', `pr-${prNumber}`);
+}
+
+// Checkout lives inside the scratch dir so everything is co-located.
+// Persistent across runs — skip clone if `checkout/.git` exists.
+function checkoutDir(owner, repo, prNumber) {
+  return path.join(scratchDir(prNumber), 'checkout');
 }
 
 /**

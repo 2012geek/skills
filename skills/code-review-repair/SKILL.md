@@ -28,7 +28,7 @@ No `anthropic.apiKey` needed.
    ```bash
    node ${CLAUDE_PLUGIN_ROOT}/skills/code-review-repair/scripts/repair-pr.js --collect <PR_URL>
    ```
-   - PR is checked out at `~/.cache/gitcode-repair/<owner>-<repo>-<N>/` (persistent — kept between runs so `--apply` can re-read).
+   - PR is checked out at `.tmp/code-review-repair/pr-<N>/checkout/` (persistent — kept between runs so `--apply` can re-read).
    - Writes `.tmp/code-review-repair/pr-<N>/context.json`.
    - If `status.unresolved === 0`, writes an empty context and exits.
 
@@ -54,7 +54,7 @@ No `anthropic.apiKey` needed.
 {
   "prUrl": "https://gitcode.com/openeuler/vla-factory/pull/4",
   "owner": "openeuler", "repo": "vla-factory", "prNumber": 4,
-  "checkoutDir": "/home/nice/.cache/gitcode-repair/openeuler-vla-factory-4",
+  "checkoutDir": "<project-root>/.tmp/code-review-repair/pr-4/checkout",
   "status": { "resolved": 0, "total": 2, "unresolved": 2, "method": "scrape" },
   "prDiff": "...truncated to 10k...",
   "comments": [{
@@ -67,7 +67,7 @@ No `anthropic.apiKey` needed.
     "url": "https://gitcode.com/.../pull/4#discussion-abc-uuid",
     "fileContent": "...20-line context around line 87...",
     "fileDiff": "...diff sliced from prDiff for this file...",
-    "absPath": "/home/nice/.cache/gitcode-repair/openeuler-vla-factory-4/src/train/transform.py"
+    "absPath": "<project-root>/.tmp/code-review-repair/pr-4/checkout/src/train/transform.py"
   }]
 }
 ```
@@ -127,7 +127,7 @@ For `deleteLines` / `revert` / `replyOnly`, adjust the body accordingly — the 
 
 ## Notes
 
-- The checkout at `~/.cache/gitcode-repair/` is **persistent** — `--collect` skips cloning if `.git` exists. To force a fresh clone, `rm -rf ~/.cache/gitcode-repair/<owner>-<repo>-<N>` first.
+- The checkout at `.tmp/code-review-repair/pr-<N>/checkout/` is **persistent** — `--collect` skips cloning if `checkout/.git` exists. To force a fresh clone, `rm -rf .tmp/code-review-repair/pr-<N>/checkout` first.
 - Nested DiffNote replies require `xauth_token` (cached at `~/.gitcode-xauth-cache.json`). If missing, replies fall back to standalone PR comments — not as clean but still works.
 - `--apply` does NOT clean up the checkout, so you can inspect the result with `git log -p HEAD` or re-run after editing `fixes.json`.
 - The script does not push to remote — `git commit --amend` only updates the local checkout. Pushing is the user's responsibility (or use the `pr` skill to push the branch).
