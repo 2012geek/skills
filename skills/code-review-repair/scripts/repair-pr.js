@@ -378,7 +378,7 @@ async function runCollect(prUrl) {
 
   // Only short-circuit when the scrape definitively reports all-resolved (total > 0).
   // If the scrape failed (method='None'/'Error' or total===0), fall through to
-  // getUnresolvedComments — it uses a different DiffNote API and may still find comments.
+  // getUnresolvedInlineComments — it uses a different DiffNote API and may still find comments.
   if (status.total > 0 && status.unresolved === 0) {
     console.log('\n✅ 所有检视意见已解决 / All review comments resolved');
     const ctx = { prUrl, owner, repo, prNumber, status, comments: [], prDiff: '', checkoutDir: null };
@@ -387,7 +387,7 @@ async function runCollect(prUrl) {
   }
 
   console.log('\n📝 获取未解决检视意见 / Fetching unresolved comments...');
-  const comments = await api.getUnresolvedComments(prNumber);
+  const comments = await api.getUnresolvedInlineComments(prNumber);
   console.log(`  Found ${comments.length} comments`);
 
   // Checkout PR
