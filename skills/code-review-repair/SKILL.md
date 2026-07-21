@@ -22,6 +22,16 @@ Set `GITCODE_TOKEN` env var, or create `config.json` / `gitcode-review.config.js
 
 No `anthropic.apiKey` needed.
 
+## Project root resolution
+
+The script resolves the project root (where `.tmp/`, `context.json`, and `fixes.json` land) by walking up from `process.cwd()` looking for, in order:
+
+1. `gitcode-review.config.json` — the strongest signal (created by `/install-gitcode-review`).
+2. `.git` — fallback for projects that don't have a gitcode-review.config.json.
+3. If neither is found and cwd is inside the plugin cache, the script **throws** rather than silently writing scratch files into the plugin dir.
+
+**Always invoke this skill from the project root** (or a subdir of it). If you `cd` into the plugin cache or source repo (e.g. for dep install), `cd` back to the project root before running `--collect` / `--apply`.
+
 ## Steps
 
 1. **Collect**: fetch unresolved comments + PR diff + file content, write `context.json`:
