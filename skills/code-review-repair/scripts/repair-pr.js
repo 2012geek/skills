@@ -349,9 +349,11 @@ async function runCollect(prUrl) {
   const status = await api.getReviewStatus(prNumber);
   console.log(`  已解决 / Resolved: ${status.resolved}, 总计 / Total: ${status.total}, 未解决 / Unresolved: ${status.unresolved}`);
 
-  if (status.unresolved === 0) {
+  // Only short-circuit when the scrape definitively reports all-resolved (total > 0).
+  // If the scrape failed (method='None'/'Error' or total===0), fall through to
+  // getUnresolvedComments — it uses a different DiffNote API and may still find comments.
+  if (status.total > 0 && status.unresolved === 0) {
     console.log('\n✅ 所有检视意见已解决 / All review comments resolved');
-    // Still write an empty context so Claude can see status
     const ctx = { prUrl, owner, repo, prNumber, status, comments: [], prDiff: '', checkoutDir: null };
     await writeContext(path.join(scratchDir(prNumber), 'context.json'), ctx);
     return;
