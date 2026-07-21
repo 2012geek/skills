@@ -66,8 +66,47 @@ function loadConfig() {
 }
 
 /**
+ * Get PR metadata (source/target repo + branch) from PR API.
+ * Returns { sourceRepo, sourceBranch, targetRepo, targetBranch } or null.
+ */
+async function getPRInfo(owner, repo, prNumber, config) {
+  const https = require('https');
+  const token = process.env.GITCODE_TOKEN || config.gitcode?.token || '';
+  const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+
+  return new Promise((resolve, reject) => {
+    https.get({
+      hostname: 'api.gitcode.com',
+      path: `/api/v5/repos/${owner}/${repo}/pulls/${prNumber}`,
+      headers
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const prInfo = JSON.parse(data);
+          if (!prInfo.head || !prInfo.base) {
+            reject(new Error(`PR API response missing head/base: ${data.substring(0, 200)}`));
+            return;
+          }
+          resolve({
+            sourceRepo: prInfo.head.repo?.full_name || `${owner}/${repo}`,
+            sourceBranch: prInfo.head.ref,
+            targetRepo: prInfo.base.repo?.full_name || `${owner}/${repo}`,
+            targetBranch: prInfo.base.ref
+          });
+        } catch (e) {
+          reject(e);
+        }
+      });
+    }).on('error', reject);
+  });
+}
+
+/**
  * Checkout PR into a persistent cache directory.
- * Re-uses existing checkout if present (no rm -rf).
+ * PR-API-driven: fetch PR metadata first, then clone the source repo (gives
+ * correct HEAD), and add the target repo as `base` remote for diffing.
  */
 async function checkoutPR(owner, repo, prNumber, config) {
   const dir = checkoutDir(owner, repo, prNumber);
@@ -75,17 +114,22 @@ async function checkoutPR(owner, repo, prNumber, config) {
   console.log(`\n📦 准备 PR 代码库 / Preparing PR repository...`);
   console.log(`  缓存目录 / Cache dir: ${dir}`);
 
-  // If checkout already exists and looks valid, skip clone
+  // If checkout already exists and looks valid, fetch + checkout PR branch
   if (fs.existsSync(path.join(dir, '.git'))) {
-    console.log('  ✓ 已存在检出目录,跳过克隆 / Existing checkout found, skipping clone');
-    // Try to fetch latest + checkout PR branch again
+    console.log('  ✓ 已存在检出目录 / Existing checkout found');
     try {
-      execSync(`git fetch origin pull/${prNumber}/head:pr-${prNumber} 2>&1 || true`, {
+      const info = await getPRInfo(owner, repo, prNumber, config);
+      // Fetch latest from source and target remotes
+      execSync(`git fetch origin ${info.sourceBranch} 2>&1 || true`, { stdio: 'pipe', cwd: dir });
+      if (info.sourceRepo !== info.targetRepo) {
+        execSync(`git fetch base ${info.targetBranch} 2>&1 || true`, { stdio: 'pipe', cwd: dir });
+      }
+      // Checkout source branch (force-create local tracking branch)
+      execSync(`git checkout -B ${info.sourceBranch} origin/${info.sourceBranch} 2>&1 || true`, {
         stdio: 'pipe', cwd: dir
       });
-      execSync(`git checkout pr-${prNumber} 2>&1 || true`, { stdio: 'pipe', cwd: dir });
     } catch (e) {
-      // non-fatal
+      console.log(`  ⚠ Refresh failed: ${e.message}`);
     }
     return dir;
   }
@@ -97,67 +141,34 @@ async function checkoutPR(owner, repo, prNumber, config) {
   fs.mkdirSync(dir, { recursive: true });
 
   try {
-    console.log('  克隆仓库 / Cloning repository...');
+    const info = await getPRInfo(owner, repo, prNumber, config);
+    console.log(`  PR source: ${info.sourceRepo}:${info.sourceBranch}`);
+    console.log(`  PR target: ${info.targetRepo}:${info.targetBranch}`);
+
+    // Clone the source repo (HEAD ends up at source branch — correct PR head)
+    console.log('  克隆源仓库 / Cloning source repo...');
     execSync(
-      `GIT_LFS_SKIP_SMUDGE=1 git clone --depth 1 https://gitcode.com/${owner}/${repo}.git ${dir}`,
+      `GIT_LFS_SKIP_SMUDGE=1 git clone --depth 1 https://gitcode.com/${info.sourceRepo}.git ${dir}`,
       { stdio: 'inherit', cwd: dir }
     );
 
-    console.log('  获取基础分支 / Fetching base branch...');
-    try {
-      execSync('git fetch origin master:refs/remotes/origin/master', { stdio: 'pipe', cwd: dir });
-    } catch (e) {
-      try {
-        execSync('git fetch origin main:refs/remotes/origin/main', { stdio: 'pipe', cwd: dir });
-      } catch (e2) {
-        console.log('  ⚠ Could not fetch base branch, diff may be limited');
-      }
+    // Add target repo as `base` remote (for diffing against base branch)
+    if (info.sourceRepo !== info.targetRepo) {
+      console.log('  添加目标仓库为 base remote / Adding target as base remote...');
+      execSync(`git remote add base https://gitcode.com/${info.targetRepo}.git`, {
+        stdio: 'pipe', cwd: dir
+      });
+      execSync(`GIT_LFS_SKIP_SMUDGE=1 git fetch base ${info.targetBranch}`, {
+        stdio: 'pipe', cwd: dir
+      });
     }
 
-    console.log('  获取 PR 分支 / Fetching PR branch...');
-    try {
-      execSync(`git fetch origin pull/${prNumber}/head:pr-${prNumber}`, { stdio: 'pipe', cwd: dir });
-      execSync(`git checkout pr-${prNumber}`, { stdio: 'pipe', cwd: dir });
-      console.log(`  ✓ Checked out PR #${prNumber}`);
-    } catch (e) {
-      // Fallback: get branch name from PR API
-      try {
-        const https = require('https');
-        const token = process.env.GITCODE_TOKEN || config.gitcode?.token || '';
-        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-        const prInfo = await new Promise((resolve, reject) => {
-          https.get({
-            hostname: 'api.gitcode.com',
-            path: `/api/v5/repos/${owner}/${repo}/pulls/${prNumber}`,
-            headers
-          }, (res) => {
-            let data = '';
-            res.on('data', chunk => { data += chunk; });
-            res.on('end', () => {
-              try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
-            });
-          }).on('error', reject);
-        });
+    // Ensure local branch tracks source's branch
+    execSync(`git checkout -B ${info.sourceBranch} origin/${info.sourceBranch} 2>&1 || true`, {
+      stdio: 'pipe', cwd: dir
+    });
 
-        if (prInfo.head && prInfo.head.ref) {
-          const sourceBranch = prInfo.head.ref;
-          const sourceRepo = prInfo.head.repo?.full_name || `${owner}/${repo}`;
-          if (sourceRepo === `${owner}/${repo}`) {
-            execSync(`GIT_LFS_SKIP_SMUDGE=1 git fetch origin ${sourceBranch}`, { stdio: 'inherit', cwd: dir });
-            execSync(`git checkout ${sourceBranch}`, { stdio: 'inherit', cwd: dir });
-          } else {
-            execSync(`git remote add source https://gitcode.com/${sourceRepo}.git`, { stdio: 'pipe', cwd: dir });
-            execSync(`GIT_LFS_SKIP_SMUDGE=1 git fetch source ${sourceBranch}`, { stdio: 'inherit', cwd: dir });
-            execSync(`git checkout ${sourceBranch}`, { stdio: 'inherit', cwd: dir });
-          }
-          console.log(`  ✓ Checked out branch: ${sourceBranch}`);
-        } else {
-          throw new Error('Could not determine PR branch');
-        }
-      } catch (e2) {
-        console.log(`  ⚠ PR checkout warning: ${e2.message}`);
-      }
-    }
+    console.log(`  ✓ Checked out PR source: ${info.sourceBranch}`);
 
     // Configure git user for commits
     execSync('git config user.email "claude@anthropic.com"', { stdio: 'pipe', cwd: dir });
@@ -261,6 +272,7 @@ function readFixes(fixesPath) {
  * Get PR diff via API or git diff fallback
  */
 async function getPRDiff(owner, repo, prNumber, config, workDir) {
+  // Primary path: GitCode PR diff API (correct endpoint: /pulls/N/diff, not .diff)
   try {
     const https = require('https');
     const token = config.gitcode?.token || '';
@@ -268,7 +280,7 @@ async function getPRDiff(owner, repo, prNumber, config, workDir) {
     const diff = await new Promise((resolve, reject) => {
       https.get({
         hostname: 'api.gitcode.com',
-        path: `/api/v5/repos/${owner}/${repo}/pulls/${prNumber}.diff`,
+        path: `/api/v5/repos/${owner}/${repo}/pulls/${prNumber}/diff`,
         headers
       }, (res) => {
         let data = '';
@@ -279,17 +291,32 @@ async function getPRDiff(owner, repo, prNumber, config, workDir) {
         });
       }).on('error', reject);
     });
-    return diff.length > 10000 ? diff.substring(0, 10000) + '\n... (diff truncated)' : diff;
+    if (diff && diff.length > 0) {
+      return diff.length > 10000 ? diff.substring(0, 10000) + '\n... (diff truncated)' : diff;
+    }
   } catch (error) {
     console.log(`  ⚠ API diff failed: ${error.message}, falling back to git diff`);
+  }
+
+  // Fallback: git diff between base branch and current HEAD (PR source branch)
+  try {
+    // Determine base remote + branch from remotes
+    const remotes = execSync('git remote', { encoding: 'utf-8', cwd: workDir }).trim().split('\n');
+    const hasBase = remotes.includes('base');
+    const baseRemote = hasBase ? 'base' : 'origin';
+    // Try master first, then main
+    let baseRef = `${baseRemote}/master`;
     try {
-      let diff = execSync('git diff origin/master', { encoding: 'utf-8', cwd: workDir });
-      if (diff.length > 10000) diff = diff.substring(0, 10000) + '\n... (diff truncated)';
-      return diff;
+      execSync(`git rev-parse --verify ${baseRef}`, { stdio: 'pipe', cwd: workDir });
     } catch (e) {
-      console.log(`  ⚠ git diff also failed: ${e.message}`);
-      return '';
+      baseRef = `${baseRemote}/main`;
     }
+    let diff = execSync(`git diff ${baseRef}..HEAD`, { encoding: 'utf-8', cwd: workDir });
+    if (diff.length > 10000) diff = diff.substring(0, 10000) + '\n... (diff truncated)';
+    return diff;
+  } catch (e) {
+    console.log(`  ⚠ git diff also failed: ${e.message}`);
+    return '';
   }
 }
 

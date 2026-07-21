@@ -517,27 +517,36 @@ class GitCodeAPIRepair extends GitCodeAPI {
         }
       });
 
-      // Navigate to PR page
-      await page.goto(this.getPRUrl(prNumber), {
+      // Navigate directly to the diffs subpage (triggers DiffNote API on load,
+      // no click needed — and bypasses EN/ZH tab-text differences)
+      const diffsUrl = `${this.getPRUrl(prNumber)}/diffs`;
+      console.log(`  Navigating to diffs page: ${diffsUrl}`);
+      await page.goto(diffsUrl, {
         waitUntil: 'networkidle2',
         timeout: 60000
       });
 
-      // Wait for page load
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // Wait for DiffNote API call to fire on page load
+      await new Promise(resolve => setTimeout(resolve, 5000));
 
-      // Click on "Files changed" tab to trigger DiffNote API
-      console.log('  Clicking "Files changed" tab...');
-      await page.evaluate(() => {
-        const buttons = Array.from(document.querySelectorAll('a, button, [role="tab"]'));
-        const filesButton = buttons.find(btn => btn.textContent.includes('Files changed'));
-        if (filesButton) {
-          filesButton.click();
-        }
-      });
-
-      // Wait for API to be called
-      await new Promise(resolve => setTimeout(resolve, 8000));
+      // If we still don't have DiffNote data, try clicking the diff tab as fallback.
+      // Match both English ("Files changed") and Chinese ("文件更改"/"文件变更"/"更改的文件")
+      if (!diffNoteData) {
+        console.log('  No DiffNote API intercepted on load — trying tab click...');
+        await page.evaluate(() => {
+          const buttons = Array.from(document.querySelectorAll('a, button, [role="tab"]'));
+          const filesButton = buttons.find(btn => {
+            const txt = btn.textContent || '';
+            return txt.includes('Files changed') ||
+                   txt.includes('文件更改') ||
+                   txt.includes('文件变更') ||
+                   txt.includes('更改的文件') ||
+                   txt.includes('Diff');
+          });
+          if (filesButton) filesButton.click();
+        });
+        await new Promise(resolve => setTimeout(resolve, 8000));
+      }
 
       await browser.close();
 
