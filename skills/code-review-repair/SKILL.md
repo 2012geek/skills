@@ -1,28 +1,133 @@
 ---
 name: code-review-repair
-description: Automatically repair GitCode PR review comments using LLM to generate fixes
+description: Repair GitCode PR review comments — Claude generates fixes via Edit/Write, the script applies them and replies on the PR.
 allowed-tools: Bash Read Write Edit AskUserQuestion
 ---
 
 # GitCode Code Review Repair
 
-Automatically repairs GitCode PR review comments by fetching unresolved feedback, using LLM to generate fixes, replying to each comment with solutions, and committing with git commit --amend.
+Two-stage scaffolding: a Node.js script collects unresolved GitCode PR review comments and PR context into a JSON file; Claude (the LLM running this skill) reads the JSON, generates fixes with `Edit`/`Write`, and writes another JSON file; the script then applies the fixes to a checked-out PR, posts nested DiffNote replies, and runs `git commit --amend`.
 
-## Steps
-
-1. Verify environment: Check that GITCODE_TOKEN is set.
-2. Parse PR URL to extract owner, repo, PR number.
-3. Run the repair script:
-   ```bash
-   node ${CLAUDE_PLUGIN_ROOT}/skills/code-review-repair/scripts/repair-pr.js
-   ```
-4. The script will:
-   - Fetch review status and unresolved comments
-   - Generate fixes using LLM
-   - Reply to each review comment
-   - Commit fixes with `git commit --amend`
-5. Summarize the repair results — how many comments fixed, links to replies.
+No external Anthropic API call — Claude IS the LLM.
 
 ## Configuration
 
-Requires `GITCODE_TOKEN` environment variable or `config.json` in project root with GitCode token and Anthropic API key.
+Set `GITCODE_TOKEN` env var, or create `config.json` / `gitcode-review.config.json` in the project root:
+
+```json
+{
+  "gitcode": { "token": "<token>", "owner": "<owner>", "repo": "<repo>" }
+}
+```
+
+No `anthropic.apiKey` needed.
+
+## Steps
+
+1. **Collect**: fetch unresolved comments + PR diff + file content, write `context.json`:
+   ```bash
+   node ${CLAUDE_PLUGIN_ROOT}/skills/code-review-repair/scripts/repair-pr.js --collect <PR_URL>
+   ```
+   - PR is checked out at `~/.cache/gitcode-repair/<owner>-<repo>-<N>/` (persistent — kept between runs so `--apply` can re-read).
+   - Writes `.tmp/code-review-repair/pr-<N>/context.json`.
+   - If `status.unresolved === 0`, writes an empty context and exits.
+
+2. **Claude generates fixes**: read `.tmp/code-review-repair/pr-<N>/context.json` with the `Read` tool. For each comment:
+   - Use `Edit` on `context.comments[i].absPath` (the checkout path) to apply the fix directly to the file.
+   - Decide the `action` for the fix: `patch` (string replace), `deleteLines` (drop line numbers), `revert` (restore to HEAD), or `replyOnly` (no file change, just post a reply).
+   - Use `AskUserQuestion` to confirm with the user before each non-trivial fix (the previous interactive UX in the script has been removed — UX now lives here, in the skill flow).
+   - Build `replyBody` (the message to post back on the GitCode DiffNote). Use the templates below as a starting point.
+   - Append a fix entry to `.tmp/code-review-repair/pr-<N>/fixes.json` using the `Write` tool.
+
+3. **Apply**: read `fixes.json`, apply each fix to the checkout, post nested DiffNote replies via xauth_token, run `git commit --amend`:
+   ```bash
+   node ${CLAUDE_PLUGIN_ROOT}/skills/code-review-repair/scripts/repair-pr.js --apply <PR_URL> [--dry-run]
+   ```
+   - `--dry-run`: applies fixes to the checkout but skips GitCode reply POST and `git commit --amend` — useful for preview.
+   - On success, leaves the checkout in place so the user can inspect `git log -p HEAD` or re-run `--apply` after editing `fixes.json`.
+
+## JSON contracts
+
+### `context.json` (script writes, Claude reads)
+
+```json
+{
+  "prUrl": "https://gitcode.com/openeuler/vla-factory/pull/4",
+  "owner": "openeuler", "repo": "vla-factory", "prNumber": 4,
+  "checkoutDir": "/home/nice/.cache/gitcode-repair/openeuler-vla-factory-4",
+  "status": { "resolved": 0, "total": 2, "unresolved": 2, "method": "scrape" },
+  "prDiff": "...truncated to 10k...",
+  "comments": [{
+    "id": 123456,
+    "discussion_id": "abc-uuid",
+    "path": "src/train/transform.py",
+    "line": 87,
+    "body": "reviewer text",
+    "user": "reviewer",
+    "url": "https://gitcode.com/.../pull/4#discussion-abc-uuid",
+    "fileContent": "...20-line context around line 87...",
+    "fileDiff": "...diff sliced from prDiff for this file...",
+    "absPath": "/home/nice/.cache/gitcode-repair/openeuler-vla-factory-4/src/train/transform.py"
+  }]
+}
+```
+
+### `fixes.json` (Claude writes, script reads)
+
+```json
+{
+  "fixes": [
+    {
+      "commentId": 123456,
+      "discussion_id": "abc-uuid",
+      "filePath": "src/train/transform.py",
+      "action": "patch",
+      "originalCode": "old code",
+      "fixedCode": "new code",
+      "fixDescription": "what changed and why",
+      "reason": "why this addresses the review comment",
+      "replyBody": "感谢您的审阅意见。已按要求完成修复，具体内容如下：\n\n**修复方案**:\n...\n\n---\n🤖 Generated by gitcode-code-review-repair"
+    }
+  ]
+}
+```
+
+Fields by `action`:
+- `patch`: requires `originalCode` + `fixedCode` (string replace in file).
+- `deleteLines`: requires `deleteLines: [87, 90]` (1-indexed line numbers).
+- `revert`: no extra fields (restores file to HEAD).
+- `replyOnly`: no file change, just posts `replyBody`.
+
+## `replyBody` template (Chinese)
+
+```
+感谢您的审阅意见。已按要求完成修复，具体内容如下：
+
+**修复方案**:
+<fixDescription>
+
+**修改文件**: `<filePath>`
+
+**代码变更**:
+```
+# 修改前 (Before)
+<originalCode>
+
+# 修改后 (After)
+<fixedCode>
+```
+
+如有任何疑问，请随时提出。
+
+---
+🤖 Generated by gitcode-code-review-repair
+```
+
+For `deleteLines` / `revert` / `replyOnly`, adjust the body accordingly — the script just posts whatever `replyBody` you write.
+
+## Notes
+
+- The checkout at `~/.cache/gitcode-repair/` is **persistent** — `--collect` skips cloning if `.git` exists. To force a fresh clone, `rm -rf ~/.cache/gitcode-repair/<owner>-<repo>-<N>` first.
+- Nested DiffNote replies require `xauth_token` (cached at `~/.gitcode-xauth-cache.json`). If missing, replies fall back to standalone PR comments — not as clean but still works.
+- `--apply` does NOT clean up the checkout, so you can inspect the result with `git log -p HEAD` or re-run after editing `fixes.json`.
+- The script does not push to remote — `git commit --amend` only updates the local checkout. Pushing is the user's responsibility (or use the `pr` skill to push the branch).
