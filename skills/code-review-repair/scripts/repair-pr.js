@@ -528,16 +528,18 @@ async function runApply(prUrl, options = {}) {
   const { fixes } = readFixes(fixesPath);
   console.log(`  Loaded ${fixes.length} fix(es)`);
 
-  // Get xauth_token for nested replies
+  // Get xauth_token for nested replies. Pass repo info so the extractor can
+  // probe token validity against the right Referer/encoded path.
   let xauthToken = null;
   if (!options.dryRun) {
     try {
       const xauthExtractorPath = path.join(__dirname, 'xauth-extractor.js');
       const { getXauthToken } = require(xauthExtractorPath);
-      xauthToken = await getXauthToken();
-      console.log(`  ${xauthToken ? '✓' : '⚠'} xauth_token ${xauthToken ? 'ready' : 'missing (replies will be standalone)'}`);
+      xauthToken = await getXauthToken({ owner, repo });
+      console.log(`  ${xauthToken ? '✓' : '⚠'} xauth_token ${xauthToken ? 'ready' : 'missing (replies will be skipped — re-run --apply after extracting)'}`);
     } catch (error) {
       console.log(`  ⚠ xauth setup failed: ${error.message}`);
+      console.log('  Run `node scripts/xauth-extractor.js` to refresh the token, then re-run --apply.');
     }
   }
 
@@ -568,6 +570,17 @@ async function runApply(prUrl, options = {}) {
       }
 
       if (!options.dryRun && fix.replyBody) {
+        // If this fix targets a DiffNote (discussion_id present) but no
+        // xauth_token is available, skip the reply rather than fall back to a
+        // standalone top-level PR comment — that's exactly the "reply didn't
+        // go under the review issue" bug. File patches still apply; the user
+        // can re-run --apply after refreshing xauth_token.
+        if (fix.discussion_id && !xauthToken) {
+          console.log('  ⚫ Skipped reply: this is a DiffNote (discussion_id present) but xauth_token is missing.');
+          console.log('    Run `node scripts/xauth-extractor.js` to refresh, then re-run --apply.');
+          results.push({ file: fix.filePath, action: fix.action, error: 'skipped: no xauth_token for DiffNote reply' });
+          continue;
+        }
         const replyResult = await api.replyToComment(prNumber, fix.commentId, fix.replyBody, {
           discussion_id: fix.discussion_id,
           xauth_token: xauthToken

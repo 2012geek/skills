@@ -11,8 +11,70 @@ puppeteerExtra.use(StealthPlugin());
 
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
 
-const XAUTH_CACHE_FILE = path.join(__dirname, '..', '.xauth-cache.json');
+// Cache in the user's home directory so it survives plugin reinstalls / cache
+// clears and is not trapped inside the plugin scripts dir. Also matches the
+// path the rest of the ecosystem expects (~/.gitcode-xauth-cache.json).
+const XAUTH_CACHE_FILE = path.join(require('os').homedir(), '.gitcode-xauth-cache.json');
+
+// GitCode xauth tokens last up to ~24h in practice, but get invalidated
+// earlier sometimes (logout, rotation, server-side expiry). The probe
+// (isXauthTokenValid) catches real invalidation, but we still gate on age
+// to avoid running the probe on obviously stale tokens. 12h keeps the
+// probe running for tokens that are likely still valid, while still
+// short-circuiting before a stale token produces 401s during the apply.
+const CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
+
+/**
+ * Probe whether the xauth_token still works by calling GitCode's internal API.
+ * A GET on this endpoint returns 405 when authenticated (method not allowed,
+ * but WAF accepted us) and 401/418 when the token is stale or WAF blocks.
+ *
+ * @param {string} xauthToken - Token to probe
+ * @param {{owner:string,repo:string}} repoInfo - Repo for the Referer header
+ * @returns {Promise<boolean>} true if the token still authenticates
+ */
+async function isXauthTokenValid(xauthToken, repoInfo) {
+  if (!xauthToken) return false;
+  const encodedProject = encodeURIComponent(`${repoInfo.owner}/${repoInfo.repo}`);
+  const encodedRepoId = encodeURIComponent(encodedProject);
+  const probePath = `/issuepr/api/v1/projects/${encodedProject}/merge_requests/1/discussions/nonexistent/notes?repoId=${encodedRepoId}&iid=1`;
+
+  return new Promise((resolve) => {
+    const req = https.request({
+      hostname: 'web-api.gitcode.com',
+      port: 443,
+      path: probePath,
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json, text/plain, */*',
+        'Content-Type': 'application/json',
+        'Content-Length': 2,
+        'Origin': 'https://gitcode.com',
+        'Referer': `https://gitcode.com/${repoInfo.owner}/${repoInfo.repo}/pull/1`,
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+        'Authorization': `Bearer ${xauthToken}`,
+        'Cookie': `access_token=${xauthToken}; xauth_token=${xauthToken}`,
+        'x-platform': 'web',
+        'x-app-channel': 'gitcode-fe',
+      },
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => { data += chunk; });
+      res.on('end', () => {
+        // 401/403/418 = bad token or WAF block; 400/404/500 = token works,
+        // request was just shaped wrong. We only need to distinguish auth failure.
+        const code = res.statusCode;
+        const isHtml = data.trimStart().startsWith('<');
+        resolve(code !== 401 && code !== 403 && code !== 418 && !(code >= 400 && isHtml));
+      });
+    });
+    req.on('error', () => resolve(false));
+    req.write('{}');
+    req.end();
+  });
+}
 
 async function extractXauthToken() {
   console.log('Opening GitCode login page in browser...');
@@ -71,7 +133,7 @@ async function extractXauthToken() {
 
   // Cache the token for reuse
   const cacheData = {
-    xauth_token: xauthToken,
+    token: xauthToken,
     extracted_at: new Date().toISOString(),
     user_page: page.url(),
   };
@@ -90,17 +152,27 @@ async function extractXauthToken() {
   return xauthToken;
 }
 
-async function getXauthToken() {
-  // Try cached token first
+async function getXauthToken(repoInfo) {
+  // Try cached token first — but probe it before trusting, because GitCode
+  // invalidates xauth tokens server-side without notice.
   if (fs.existsSync(XAUTH_CACHE_FILE)) {
     const cache = JSON.parse(fs.readFileSync(XAUTH_CACHE_FILE, 'utf-8'));
-    const ageMs = Date.now() - new Date(cache.extracted_at).getTime();
-    // Use cached token if less than 24 hours old
-    if (ageMs < 24 * 60 * 60 * 1000) {
-      console.log('Using cached xauth_token (age: ' + Math.round(ageMs / 3600000) + 'h)');
-      return cache.xauth_token;
+    const token = cache.xauth_token || cache.token;
+    const extractedAt = cache.extracted_at;
+    const ageMs = extractedAt ? Date.now() - new Date(extractedAt).getTime() : Infinity;
+
+    if (token && ageMs < CACHE_TTL_MS) {
+      const owner = repoInfo?.owner || 'openeuler';
+      const repo = repoInfo?.repo || 'vla-factory';
+      const valid = await isXauthTokenValid(token, { owner, repo });
+      if (valid) {
+        console.log(`Using cached xauth_token (age: ${Math.round(ageMs / 60000)}m, validated)`);
+        return token;
+      }
+      console.log(`Cached xauth_token rejected by GitCode (age: ${Math.round(ageMs / 60000)}m), need fresh login.`);
+    } else if (token) {
+      console.log(`Cached xauth_token expired (age: ${Math.round(ageMs / 3600000)}h > ${CACHE_TTL_MS / 3600000}h), need fresh login.`);
     }
-    console.log('Cached xauth_token expired, need fresh login.');
   }
 
   // Need manual login
