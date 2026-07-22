@@ -29,8 +29,8 @@
 const path = require('path');
 const fs = require('fs');
 
-const libPath = path.join(__dirname, '..', '..', 'lib');
-const { GitCodeAPI } = require(path.join(libPath, 'gitcode-sdk', 'gitcode-api.js'));
+const libPath = path.join(__dirname, '..', 'lib');
+const { GitCodeAPI } = require(path.join(libPath, 'gitcode-api.js'));
 
 const collectModule = require(path.join(__dirname, 'collect-pr-context.js'));
 const { resolveProjectRoot, scratchDir } = collectModule;

@@ -20,8 +20,12 @@
 const path = require('path');
 const fs = require('fs');
 
-const libPath = path.join(__dirname, '..', '..', 'lib');
-const { GitCodeAPI } = require(path.join(libPath, 'gitcode-sdk', 'gitcode-api.js'));
+// Resolve the SDK via the skill's local lib stub (skills/<skill>/lib/
+// gitcode-api.js re-exports from ../../../lib/gitcode-sdk/). This matches
+// the convention used by code-review-repair and survives plugin cache
+// relocations.
+const libPath = path.join(__dirname, '..', 'lib');
+const { GitCodeAPI } = require(path.join(libPath, 'gitcode-api.js'));
 
 /**
  * Resolve the project root directory (where `.tmp/` and config files should
