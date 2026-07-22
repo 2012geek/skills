@@ -298,8 +298,8 @@ ${commits.map(c => `- ${c.title}`).join('\n')}
 3. 每行一个命令，不要包含"测试命令："等前缀文字
 
 示例格式：
-pytest tests/tools/preprocessor/test_preprocess_videos_pyav.py -v
-pytest tests/tools/preprocessor/
+pytest tests/test_foo.py -v
+pytest tests/
 
 只返回命令，每行一个，不要有其他说明文字。`;
 
