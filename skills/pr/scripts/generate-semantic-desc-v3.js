@@ -12,6 +12,48 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const http = require('http');
+
+/**
+ * 根据文件扩展名返回适合 markdown 代码块的语言标识
+ */
+function detectCodeLanguage(filename) {
+  const ext = filename.substring(filename.lastIndexOf('.') + 1).toLowerCase();
+  const map = {
+    py: 'python',
+    js: 'javascript',
+    ts: 'typescript',
+    sh: 'bash',
+    bash: 'bash',
+    zsh: 'bash',
+    yml: 'yaml',
+    yaml: 'yaml',
+    json: 'json',
+    toml: 'toml',
+    md: 'markdown',
+    rst: 'rst',
+    html: 'html',
+    css: 'css',
+    scss: 'scss',
+    go: 'go',
+    rs: 'rust',
+    java: 'java',
+    kt: 'kotlin',
+    c: 'c',
+    h: 'c',
+    cpp: 'cpp',
+    hpp: 'cpp',
+    cc: 'cpp',
+    cs: 'csharp',
+    rb: 'ruby',
+    php: 'php',
+    sql: 'sql',
+    dockerfile: 'dockerfile',
+  };
+  const basename = filename.substring(filename.lastIndexOf('/') + 1).toLowerCase();
+  if (basename === 'dockerfile' || basename.endsWith('.dockerfile')) return 'dockerfile';
+  return map[ext] || '';
+}
 
 // 读取配置文件
 function loadConfig() {
@@ -76,31 +118,32 @@ function fetchFileContent(owner, repo, filePath, ref, token) {
  */
 function callLLM(prompt, apiKey) {
   return new Promise((resolve, reject) => {
-    // 从 Claude settings 读取配置
+    let protocol = 'https:';
     let baseUrl = 'api.anthropic.com';
+    let basePort = 443;
     let basePath = '/v1/messages';
     let token = apiKey;
 
     try {
-      const fs = require('fs');
       const settingsPath = process.env.HOME + '/.claude/settings.json';
       if (fs.existsSync(settingsPath)) {
         const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
         if (settings.env && settings.env.ANTHROPIC_BASE_URL) {
-          // 解析自定义 base URL
           const customUrl = new URL(settings.env.ANTHROPIC_BASE_URL);
+          protocol = customUrl.protocol;
           baseUrl = customUrl.hostname;
-          // 保留路径部分 (如 /api/anthropic)
+          basePort = customUrl.port ? parseInt(customUrl.port) : (protocol === 'https:' ? 443 : 80);
           const customPath = customUrl.pathname.replace(/\/$/, '');
           basePath = customPath + '/v1/messages';
-          console.log('  [使用自定义 API 端点: ' + baseUrl + ']');
+          console.log('  [使用自定义 API 端点: ' + protocol + '//' + baseUrl + ':' + basePort + ']');
         }
       }
     } catch (e) {
       // 忽略配置读取错误，使用默认值
     }
 
-    // 使用 Claude API
+    const transport = protocol === 'https:' ? https : http;
+
     const data = JSON.stringify({
       model: 'claude-3-5-sonnet-20241022',
       max_tokens: 1000,
@@ -112,7 +155,7 @@ function callLLM(prompt, apiKey) {
 
     const options = {
       hostname: baseUrl,
-      port: 443,
+      port: basePort,
       path: basePath,
       method: 'POST',
       headers: {
@@ -122,7 +165,7 @@ function callLLM(prompt, apiKey) {
       }
     };
 
-    const req = https.request(options, (res) => {
+    const req = transport.request(options, (res) => {
       let data = '';
       res.on('data', (chunk) => { data += chunk; });
       res.on('end', () => {
@@ -180,14 +223,16 @@ async function analyzeFileWithLLM(filename, content, apiKey, status) {
     statusHint = '注意：这个文件是新添加的。';
   }
 
-  const prompt = `请分析以下 Python 文件的修改内容，总结其主要功能点：
+  const codeLang = detectCodeLanguage(filename);
+
+  const prompt = `请分析以下文件的修改内容，总结其主要功能点：
 
 文件名: ${filename}
 文件状态: ${status || 'unknown'}
 ${statusHint}
 
 文件内容:
-\`\`\`python
+\`\`\`${codeLang}
 ${truncatedContent}
 \`\`\`
 
@@ -381,14 +426,16 @@ ${commitsList}
 function generateFallbackTestInstructions(files) {
   const instructions = [];
 
-  // 检测测试文件目录
-  const testFiles = files.filter(f => f.filename.startsWith('tests/') && f.filename.endsWith('.py') && !f.filename.includes('conftest'));
+  const testFiles = files.filter(f =>
+    f.filename.startsWith('tests/') &&
+    f.filename.endsWith('.py') &&
+    !f.filename.includes('conftest')
+  );
+
   if (testFiles.length > 0) {
-    // 按目录分组测试文件
     const testGroups = {};
     testFiles.forEach(f => {
       const parts = f.filename.split('/');
-      // 获取 tests/ 下的子目录
       if (parts.length > 2) {
         const dir = parts.slice(0, parts.indexOf('tests') + 2).join('/');
         if (!testGroups[dir]) testGroups[dir] = [];
@@ -396,7 +443,6 @@ function generateFallbackTestInstructions(files) {
       }
     });
 
-    // 为每个测试目录生成说明
     Object.keys(testGroups).sort().forEach(dir => {
       const testFilesInDir = testGroups[dir].map(f => f.split('/').pop());
       instructions.push(`**测试目录: \`${dir}\`**`);
@@ -414,17 +460,42 @@ function generateFallbackTestInstructions(files) {
     });
   }
 
-  // 检测配置文件
-  const hasConfig = files.some(f => f.filename.endsWith('.yaml') || f.filename.endsWith('.yml'));
-  if (hasConfig) {
+  const pyFiles = files.filter(f => f.filename.endsWith('.py') && f.status !== 'deleted');
+  if (pyFiles.length > 0 && testFiles.length === 0) {
+    instructions.push('**Python 语法检查**');
+    instructions.push('');
+    instructions.push('```bash');
+    instructions.push('python -m py_compile \\');
+    pyFiles.slice(0, 10).forEach((f, i) => {
+      const sep = i === pyFiles.length - 1 || i === 9 ? '' : ' \\';
+      instructions.push('  ' + f.filename + sep);
+    });
+    instructions.push('```');
+    instructions.push('');
+  }
+
+  const hasYaml = files.some(f => f.filename.endsWith('.yaml') || f.filename.endsWith('.yml'));
+  if (hasYaml) {
     instructions.push('**配置文件验证**');
     instructions.push('');
-    instructions.push('验证配置文件语法正确');
+    instructions.push('```bash');
+    instructions.push('python -c "import yaml; yaml.safe_load(open(\'<file>.yaml\'))" && echo OK');
+    instructions.push('```');
+    instructions.push('');
+  }
+
+  const hasJson = files.some(f => f.filename.endsWith('.json'));
+  if (hasJson) {
+    instructions.push('**JSON 语法验证**');
+    instructions.push('');
+    instructions.push('```bash');
+    instructions.push('python -c "import json; json.load(open(\'<file>.json\'))" && echo OK');
+    instructions.push('```');
+    instructions.push('');
   }
 
   if (instructions.length === 0) {
-    instructions.push('- 验证代码编译/构建成功');
-    instructions.push('- 手动测试相关功能');
+    instructions.push('- 本 PR 仅修改文档/配置类文件，建议人工审阅改动内容');
   }
 
   return instructions.join('\n');
@@ -472,24 +543,23 @@ function generateDefaultFeatureDescription(change) {
   const filename = change.mainFile || change.path || '';
   const type = change.type || '修改';
 
-  // 基于文件名推断功能
-  if (filename.includes('video_utils')) {
-    return '添加视频解码后端自动选择功能，支持基于图像的时间戳同步加载';
+  // 仅基于文件扩展名给出非常粗粒度的描述，避免对未知项目做错误的特化假设
+  if (filename.endsWith('.md')) {
+    return type + '文档内容';
   }
-  if (filename.includes('video_to_images') || filename.includes('preprocessor')) {
-    return '提供视频到图像的转换功能，支持 PyAV 和 Decort 解码，多进程处理与 GPU 加速';
+  if (filename.endsWith('.yaml') || filename.endsWith('.yml')) {
+    return type + 'YAML 配置文件';
   }
-  if (filename.includes('export_model')) {
-    return '导出模型为 ONNX 格式并转换为 Ascend OM 模型';
+  if (filename.endsWith('.json')) {
+    return type + 'JSON 配置文件';
   }
-  if (filename.includes('conftest')) {
-    return 'Pytest 测试配置，包含动态生成测试视频的辅助函数';
+  if (filename.endsWith('.sh')) {
+    return type + 'shell 脚本';
   }
-  if (filename.includes('create_test_video')) {
-    return '自动生成测试用的 MP4 视频文件（纯色、渐变、时间戳、移动物体）';
+  if (filename.endsWith('.py')) {
+    return type + 'Python 模块';
   }
 
-  // 默认返回 null，让调用方处理
   return null;
 }
 
@@ -550,13 +620,7 @@ async function generateSemanticChanges(files, commits, owner, repo, branch, toke
 
           // 备用规则
           if (features.length === 0) {
-            if (file.filename.includes('pyav')) {
-              features.push('使用 PyAV 的视频预处理测试');
-            } else if (file.filename.includes('real')) {
-              features.push('真实视频文件的端到端测试');
-            } else if (file.filename.includes('simple')) {
-              features.push('简单场景的单元测试');
-            } else if (file.filename.includes('conftest')) {
+            if (file.filename.includes('conftest')) {
               features.push('pytest 配置');
             } else {
               features.push('单元测试');
@@ -617,11 +681,7 @@ async function generateSemanticChanges(files, commits, owner, repo, branch, toke
           features = [llmResult];
 
           // 从 LLM 结果推断功能名称
-          if (mainFile.filename.includes('video_utils')) {
-            featureName = '视频工具模块';
-          } else if (mainFile.filename.includes('video')) {
-            featureName = '视频处理';
-          } else if (llmResult.includes('添加') || llmResult.includes('新增')) {
+          if (llmResult.includes('添加') || llmResult.includes('新增')) {
             featureName = llmResult.replace(/^[新增添加修改]+/, '').replace(/参数.*$/, '').trim();
             if (featureName.length > 10) {
               featureName = featureName.substring(0, 10);
@@ -629,7 +689,6 @@ async function generateSemanticChanges(files, commits, owner, repo, branch, toke
           }
 
           if (!featureName) {
-            // 从文件名推断
             const parts = mainFile.filename.split('/');
             const name = parts[parts.length - 1].replace('.py', '').replace(/_/g, ' ');
             featureName = name.charAt(0).toUpperCase() + name.slice(1);
@@ -637,54 +696,16 @@ async function generateSemanticChanges(files, commits, owner, repo, branch, toke
         }
       }
 
-      // 备用：从文件名和内容推断功能
+      // 备用：从文件名推断功能名称（不针对具体项目做特化）
       if (!featureName) {
-        // 通过文件名和内容推断更准确的功能名称
-        if (mainFile.filename.includes('video_utils') || mainFile.filename.includes('utils')) {
-          // utils 文件：提供工具函数/能力
-          if (content && content.includes('decode_video_frames') && content.includes('backend')) {
-            featureName = '视频解码工具模块';
-          } else {
-            featureName = '视频工具模块';
-          }
-        } else if (mainFile.filename.includes('video_to_images') || mainFile.filename.includes('preprocessor')) {
-          // preprocessor/to_images 文件：执行具体的处理任务
-          featureName = '视频预处理工具';
-        } else if (mainFile.filename.includes('preprocess')) {
-          featureName = '预处理工具';
-        } else {
-          // 默认：从文件名
-          const parts = mainFile.filename.split('/');
-          const name = parts[parts.length - 1].replace('.py', '').replace(/_/g, ' ');
-          featureName = name.charAt(0).toUpperCase() + name.slice(1);
-        }
+        const parts = mainFile.filename.split('/');
+        const name = parts[parts.length - 1].replace('.py', '').replace(/_/g, ' ');
+        featureName = name.charAt(0).toUpperCase() + name.slice(1);
       }
 
-      // 备用：从内容推断功能特性
+      // 备用：从内容推断功能特性（仅给出非常粗粒度的描述）
       if (features.length === 0 && content) {
-        // 检测文件的实际功能
-        if (mainFile.filename.includes('video_utils') && content.includes('decode_video_frames')) {
-          features.push('为 decode_video_frames 函数添加 backend 参数');
-          features.push('支持 images、torchcodec、pyav、video_reader 等后端');
-        } else if (mainFile.filename.includes('video_to_images')) {
-          // 检测预处理工具的具体功能
-          if (content.includes('multiprocessing') || content.includes('ProcessPoolExecutor')) {
-            features.push('多进程并行处理，提高效率');
-          }
-          if (content.includes('timestamp')) {
-            features.push('生成时间戳元数据');
-          }
-          if (content.includes('Av.') || content.includes('decord')) {
-            features.push('支持 PyAV 和 Decord 视频解码');
-          }
-          if (content.includes('cuda') || content.includes('gpu')) {
-            features.push('支持 GPU 加速（可自动回退 CPU）');
-          }
-          // 总结性描述
-          features.push('将视频转换为图像帧，便于后续训练');
-        } else if (mainFile.filename.includes('export_model')) {
-          features.push('模型导出工具');
-        }
+        // 不做基于具体项目内容的猜测，留给 LLM 或审阅者判断
       }
 
       const otherFiles = filesInDir.filter(f => f !== mainFile && !isInitOrConfigFile(f.filename));
@@ -865,8 +886,6 @@ ${testSection}`;
 ---
 
 **注意**: 社区中的任何人都可以在测试通过后审查 PR。欢迎标记对你这个 PR 感兴趣的成员/贡献者。尽量避免标记超过 3 个人。
-
-**注意**: 在提交 PR 之前，请阅读 [贡献者指南](https://github.com/huggingface/lerobot/blob/main/CONTRIBUTING.md#submitting-a-pull-request-pr)。
 `;
 
   return description;
@@ -874,63 +893,58 @@ ${testSection}`;
 
 /**
  * 生成测试验证报告章节（用于添加到 PR body 中）
+ * 动态生成：基于 PR 实际修改的文件列表。无测试文件时跳过整段，不伪造结论。
  */
 function generateTestReportSection(changes, files) {
-  // 构建测试文件列表
-  const testFiles = files.filter(f => f.filename.startsWith('tests/') && f.filename.endsWith('.py') && !f.filename.includes('conftest'));
-  const testFileList = testFiles.map(f => {
-    const name = f.filename.substring(f.filename.lastIndexOf('/') + 1);
-    return '- `' + f.filename + '` - ' + getTestFileDescription(f.filename);
-  }).join('\n');
+  const testFiles = files.filter(f =>
+    f.filename.startsWith('tests/') &&
+    f.filename.endsWith('.py') &&
+    !f.filename.includes('conftest')
+  );
 
-  // 获取测试目录
-  const testDir = testFiles.length > 0 ? testFiles[0].filename.substring(0, testFiles[0].filename.lastIndexOf('/')) : 'tests';
+  const pyFiles = files.filter(f => f.filename.endsWith('.py') && f.status !== 'deleted');
 
-  // 构建验证时间
-  const verifyTime = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  if (testFiles.length === 0 && pyFiles.length === 0) {
+    return '';
+  }
 
-  return '\n\n## 测试验证报告\n\n' +
-    '### 测试执行输出\n\n' +
-    '#### 语法检查输出\n\n' +
-    '```bash\n' +
-    '$ python -m py_compile tests/tools/preprocessor/test_*.py src/tools/preprocessor/*.py src/lerobot/datasets/video_utils.py\n\n' +
-    '=== 语法检查结果 ===\n' +
-    '✓ tests/tools/preprocessor/test_preprocess_videos_pyav.py: 语法检查通过\n' +
-    '✓ tests/tools/preprocessor/test_preprocess_videos_real.py: 语法检查通过\n' +
-    '✓ tests/tools/preprocessor/test_preprocess_videos_simple.py: 语法检查通过\n' +
-    '✓ src/tools/preprocessor/__init__.py: 语法检查通过\n' +
-    '✓ src/tools/preprocessor/video_to_images.py: 语法检查通过\n' +
-    '✓ src/lerobot/datasets/video_utils.py: 语法检查通过\n\n' +
-    '=== 语法检查完成 ===\n' +
-    '所有文件语法检查通过 ✅\n' +
-    '```\n\n' +
-    '#### 测试框架验证输出\n\n' +
-    '```bash\n' +
-    '$ pytest ' + testDir + '/ --collect-only\n\n' +
-    '=== 收集的测试用例 ===\n\n' +
-    'tests/tools/preprocessor/test_preprocess_videos_pyav.py::TestVideoPreprocessingPyAV::test_video_to_images_pyav_backend\n' +
-    '  - 测试 PyAV 后端视频解码功能\n' +
-    '  - 验证输出帧数和格式正确性\n\n' +
-    'tests/tools/preprocessor/test_preprocess_videos_real.py::TestRealVideoProcessing::test_real_video_file_processing\n' +
-    '  - 测试真实视频文件的端到端处理\n' +
-    '  - 验证时间戳元数据生成\n\n' +
-    'tests/tools/preprocessor/test_preprocess_videos_simple.py::TestSimpleVideoScenarios::test_simple_video_processing\n' +
-    '  - 测试简单场景下的视频处理\n' +
-    '  - 验证基本功能正常工作\n\n' +
-    '=== 收集到 ' + testFiles.length + ' 个测试用例 ===\n' +
-    '```\n\n' +
-    '### 验证结论\n\n' +
-    '| 验证项 | 状态 | 说明 |\n' +
-    '|--------|------|------|\n' +
-    '| Python 语法检查 | ✅ 通过 | 所有 ' + (testFiles.length + 3) + ' 个文件语法正确 |\n' +
-    '| 测试框架结构 | ✅ 通过 | ' + testFiles.length + ' 个测试文件 |\n' +
-    '| 测试用例覆盖 | ✅ 通过 | 覆盖主要功能场景 |\n' +
-    '| 模块导入路径 | ✅ 通过 | 所有导入路径正确 |\n' +
-    '| 代码实现完整性 | ✅ 通过 | 所有功能已实现 |\n\n' +
-    '---\n\n' +
-    '**验证时间**: ' + verifyTime + '\n' +
-    '**验证环境**: Python 3.13, pytest 9.0.2\n' +
-    '**验证方式**: 语法检查 + 测试框架分析 + 代码静态分析\n';
+  const verifyTime = new Date().toLocaleString('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit'
+  });
+
+  let report = '\n\n## 测试验证报告\n\n';
+
+  if (pyFiles.length > 0) {
+    report += '### 语法检查\n\n';
+    report += '```bash\n';
+    report += '$ python -m py_compile \\\n';
+    pyFiles.slice(0, 10).forEach((f, i) => {
+      const sep = i === pyFiles.length - 1 || i === 9 ? '' : ' \\';
+      report += '  ' + f.filename + sep + '\n';
+    });
+    report += '```\n\n';
+  }
+
+  if (testFiles.length > 0) {
+    const testDir = testFiles[0].filename.substring(0, testFiles[0].filename.lastIndexOf('/'));
+    report += '### 测试收集\n\n';
+    report += '```bash\n';
+    report += '$ pytest ' + testDir + '/ --collect-only\n';
+    report += '```\n\n';
+    report += '**测试文件**:\n';
+    testFiles.forEach(f => {
+      report += '- `' + f.filename + '`\n';
+    });
+    report += '\n';
+  }
+
+  report += '---\n\n';
+  report += '**验证时间**: ' + verifyTime + '\n';
+  report += '**验证方式**: 静态分析 PR 文件列表（未实际执行）\n';
+
+  return report;
 }
 
 /**
@@ -1053,90 +1067,22 @@ async function createOrUpdateDiscussionComment(prNumber, changes, files, config)
  * 生成评论内容
  */
 function generateCommentBody(changes, files) {
-  // 构建功能点描述（列表格式，包含详细修改内容）
   const featureList = changes.map(c => {
     const type = c.type || '新增';
-    const typeIcon = type === '新增' ? '新增' : type === '移动' ? '移动' : type === '修改' ? '修改' : '更新';
-
-    let desc = '- **' + typeIcon + (c.name || '模块') + '** (`' + (c.mainFile || c.path) + '`)\n';
-
+    let desc = '- **' + type + (c.name || '模块') + '** (`' + (c.mainFile || c.path) + '`)\n';
     if (c.features && c.features.length > 0) {
       desc += '  ' + c.features.map(f => f).join('\n  ');
     }
-
     return desc;
   }).join('\n');
 
-  // 构建测试文件列表
-  const testFiles = files.filter(f => f.filename.startsWith('tests/') && f.filename.endsWith('.py') && !f.filename.includes('conftest'));
-  const testFileList = testFiles.map(f => {
-    const name = f.filename.substring(f.filename.lastIndexOf('/') + 1);
-    return '- `' + f.filename + '` - ' + getTestFileDescription(f.filename);
-  }).join('\n');
+  const testReport = generateTestReportSection(changes, files);
 
-  // 获取测试目录
-  const testDir = testFiles.length > 0 ? testFiles[0].filename.substring(0, testFiles[0].filename.lastIndexOf('/')) : 'tests';
-
-  // 构建验证时间
-  const verifyTime = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-
-  return '### 主要变更\n\n' +
-    featureList + '\n\n' +
-    '## 测试验证报告\n\n' +
-    '### 如何测试\n\n' +
-    '**测试目录**: `' + testDir + '/`\n\n' +
-    '**测试文件**:\n' +
-    testFileList + '\n\n' +
-    '**运行命令**:\n' +
-    '```bash\n' +
-    '# 运行所有 preprocessor 测试\n' +
-    'pytest ' + testDir + '/ -v\n\n' +
-    '# 运行单个测试文件\n' +
-    'pytest ' + testDir + '/test_preprocess_videos_simple.py -v\n\n' +
-    '# 带覆盖率报告\n' +
-    'pytest ' + testDir + '/ --cov=src/tools/preprocessor --cov-report=term-missing\n' +
-    '```\n\n' +
-    '### 测试执行输出\n\n' +
-    '#### 语法检查输出\n\n' +
-    '```bash\n' +
-    '$ python -m py_compile tests/tools/preprocessor/test_*.py src/tools/preprocessor/*.py src/lerobot/datasets/video_utils.py\n\n' +
-    '=== 语法检查结果 ===\n' +
-    '✓ tests/tools/preprocessor/test_preprocess_videos_pyav.py: 语法检查通过\n' +
-    '✓ tests/tools/preprocessor/test_preprocess_videos_real.py: 语法检查通过\n' +
-    '✓ tests/tools/preprocessor/test_preprocess_videos_simple.py: 语法检查通过\n' +
-    '✓ src/tools/preprocessor/__init__.py: 语法检查通过\n' +
-    '✓ src/tools/preprocessor/video_to_images.py: 语法检查通过\n' +
-    '✓ src/lerobot/datasets/video_utils.py: 语法检查通过\n\n' +
-    '=== 语法检查完成 ===\n' +
-    '所有文件语法检查通过 ✅\n' +
-    '```\n\n' +
-    '#### 测试框架验证输出\n\n' +
-    '```bash\n' +
-    '$ pytest ' + testDir + '/ --collect-only\n\n' +
-    '=== 收集的测试用例 ===\n\n' +
-    'tests/tools/preprocessor/test_preprocess_videos_pyav.py::TestVideoPreprocessingPyAV::test_video_to_images_pyav_backend\n' +
-    '  - 测试 PyAV 后端视频解码功能\n' +
-    '  - 验证输出帧数和格式正确性\n\n' +
-    'tests/tools/preprocessor/test_preprocess_videos_real.py::TestRealVideoProcessing::test_real_video_file_processing\n' +
-    '  - 测试真实视频文件的端到端处理\n' +
-    '  - 验证时间戳元数据生成\n\n' +
-    'tests/tools/preprocessor/test_preprocess_videos_simple.py::TestSimpleVideoScenarios::test_simple_video_processing\n' +
-    '  - 测试简单场景下的视频处理\n' +
-    '  - 验证基本功能正常工作\n\n' +
-    '=== 收集到 ' + testFiles.length + ' 个测试用例 ===\n' +
-    '```\n\n' +
-    '### 验证结论\n\n' +
-    '| 验证项 | 状态 | 说明 |\n' +
-    '|--------|------|------|\n' +
-    '| Python 语法检查 | ✅ 通过 | 所有 ' + (testFiles.length + 3) + ' 个文件语法正确 |\n' +
-    '| 测试框架结构 | ✅ 通过 | ' + testFiles.length + ' 个测试文件 |\n' +
-    '| 测试用例覆盖 | ✅ 通过 | 覆盖主要功能场景 |\n' +
-    '| 模块导入路径 | ✅ 通过 | 所有导入路径正确 |\n' +
-    '| 代码实现完整性 | ✅ 通过 | 所有功能已实现 |\n\n' +
-    '---\n\n' +
-    '**验证时间**: ' + verifyTime + '\n' +
-    '**验证环境**: Python 3.13, pytest 9.0.2\n' +
-    '**验证方式**: 语法检查 + 测试框架分析 + 代码静态分析\n';
+  let body = '### 主要变更\n\n' + featureList + '\n';
+  if (testReport) {
+    body += testReport;
+  }
+  return body;
 }
 
 /**
@@ -1181,16 +1127,6 @@ function createNewComment(prNumber, commentBody, config) {
   });
 }
 
-/**
- * 获取测试文件描述
- */
-function getTestFileDescription(filename) {
-  if (filename.includes('pyav')) return 'PyAV 后端视频处理测试';
-  if (filename.includes('real')) return '真实视频文件端到端测试';
-  if (filename.includes('simple')) return '简单场景单元测试';
-  if (filename.includes('create')) return '测试视频生成工具';
-  return '单元测试';
-}
 
 // 主函数
 async function main() {
