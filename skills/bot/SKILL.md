@@ -48,18 +48,20 @@ Every command returns `{ ok: true|false, ... }` JSON. If `ok: false`, read the `
 | `issue-create` | `--project owner/repo --finding '<JSON>' --test '<JSON|null>'` | `{ ok, issueNumber, status }` |
 | `issue-list` | `--project owner/repo` | `{ ok, issues: [...] }` |
 | `issue-close` | `--project owner/repo --number 42` | `{ ok }` |
-| `issue-comment` | `--project owner/repo --number 42 --body 'text'` | `{ ok }` |
+| `issue-comment` | `--project owner/repo --number 42 --body 'text'` **or** `--body-file <path>` | `{ ok }` |
 | `wait-check` | `--project owner/repo --number 42` | `{ ok, shouldProceed: bool }` |
 | `test-discover` | `--repo-path /local/path` | `{ ok, command: "npm test" | null }` |
 | `test-run` | `--command "npm test" --repo-path /path` | `{ ok, passed, passCount, failCount, output }` |
 | `git-clone` | `--project owner/repo` | `{ ok, localPath }` |
 | `git-branch` | `--repo-path /path --name bot/fix-42` | `{ ok }` |
 | `git-push` | `--repo-path /path --name bot/fix-42` | `{ ok }` |
-| `pr-create` | `--project owner/repo --number 42 --branch bot/fix-42 --title "..." --body "..."` | `{ ok, prNumber, status }` |
+| `pr-create` | `--project owner/repo --number 42 --branch bot/fix-42 --title "..." --body "..."` **or** `--body-file <path>` | `{ ok, prNumber, status }` |
 
 **JSON strings**: For args like `--finding`, `--issue`, `--fix`, `--pr`, pass a single-quoted JSON string. Example: `--finding '{"severity":"medium","title":"null pointer","file":"src/main.py","line":42}'`
 
 **Large JSON payloads (e.g. `dedup` findings arrays)**: prefer `--findings-file <path>` over `--findings '<JSON>'`. Inline single-quoted JSON breaks when the payload contains apostrophes or grows past the shell argv limit. Write the JSON to a file under `<project-root>/.tmp/gitcode-bot/scratch/findings.json` first, then pass `--findings-file <path>`. The CLI **refuses to read files outside `<project-root>/.tmp/gitcode-bot/`** — this guarantees scratch files stay co-located with the project and don't pollute `/tmp/` or `~/`.
+
+**Long text payloads (e.g. `issue-comment --body`, `pr-create --body`)**: prefer `--body-file <path>` over `--body '<text>'`. Inline single-quoted text breaks on backticks (`` ` ``), double quotes (`"`), dollar-signs (`$`), apostrophes (`'`), and CJK punctuation (full-width quotes/brackets) — all common in markdown comments and PR descriptions. Write the body to a file under `<project-root>/.tmp/gitcode-bot/scratch/` first, then pass `--body-file <path>`. Same workspace-validation guard as `--findings-file` applies. Use `--body` only for short one-liners (titles, single-sentence comments) that have no special characters.
 
 ## Reference Agent Files
 
@@ -345,9 +347,12 @@ node ${CLAUDE_PLUGIN_ROOT}/skills/bot/scripts/cli.js git-push --repo-path <local
 2. Read PR description reference:
 Read `${CLAUDE_PLUGIN_ROOT}/skills/bot/agents/pr-description-writer.md` for guidance.
 
-3. Generate a PR description, then create PR:
+3. Generate a PR description, then create PR. Write the PR body to a file under `.tmp/gitcode-bot/scratch/` first (PR descriptions are long markdown — `--body-file` avoids shell-quoting issues with backticks, quotes, and CJK punctuation):
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/skills/bot/scripts/cli.js pr-create --project owner/repo --number N --branch bot/fix-N --title "fix #N: <title>" --body '<PR_BODY>'
+# Write PR body to <project-root>/.tmp/gitcode-bot/scratch/pr_body_N.md
+# (the Write tool — do NOT use /tmp/ or any path outside the project)
+
+node ${CLAUDE_PLUGIN_ROOT}/skills/bot/scripts/cli.js pr-create --project owner/repo --number N --branch bot/fix-N --title "fix #N: <title>" --body-file <project-root>/.tmp/gitcode-bot/scratch/pr_body_N.md
 ```
 
 4. Persist PR record:

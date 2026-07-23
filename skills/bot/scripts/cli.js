@@ -68,6 +68,33 @@ function resolveBotFile(filePath, wsRoot) {
   return fileReal;
 }
 
+// Resolve a --body / --title / --description (or any long text) argument from
+// either --body-file <path> (preferred for long/markdown text — avoids shell
+// quoting hell with backticks, quotes, and CJK punctuation) or inline --body
+// '<text>'. Falls back to --body when --body-file is absent. The file must
+// live under the bot workspace (<project>/.tmp/gitcode-bot/) — same guard as
+// resolveBotFile, so scratch files stay co-located with the project.
+//
+// Why this exists: posting a multi-paragraph markdown comment with code
+// snippets (backticks), JSON examples (double quotes), or Chinese punctuation
+// via --body '<text>' requires escaping every special char in shell — heredoc
+// + $(cat <<'EOF') also breaks on these. Writing the body to a file under
+// .tmp/gitcode-bot/scratch/ and passing --body-file is the robust path.
+function resolveBodyArg(args, wsRoot, commandName) {
+  if (args['body-file']) {
+    const resolved = resolveBotFile(args['body-file'], wsRoot);
+    return fs.readFileSync(resolved, 'utf8');
+  }
+  if (args.body !== undefined) {
+    return args.body;
+  }
+  throw new Error(
+    `${commandName} requires either --body '<text>' or --body-file <path>. ` +
+    `Prefer --body-file with a file under <project>/.tmp/gitcode-bot/scratch/ ` +
+    `for any body longer than a short one-liner.`
+  );
+}
+
 function parseArgs(argv) {
   const args = {};
   for (let i = 0; i < argv.length; i++) {
@@ -293,7 +320,8 @@ async function handleCommand(command, args) {
       break;
     }
     case 'issue-comment': {
-      const { project, number, body } = args;
+      const { project, number } = args;
+      const body = resolveBodyArg(args, ws.root, 'issue-comment');
       const config = configManager.load();
       const proj = resolveProject(config, project);
       const api = createApi(proj);
@@ -373,7 +401,8 @@ async function handleCommand(command, args) {
 
     // ─── PR ────────────────────────────────────────────────
     case 'pr-create': {
-      const { project, number, branch, title, body } = args;
+      const { project, number, branch, title } = args;
+      const body = resolveBodyArg(args, ws.root, 'pr-create');
       const config = configManager.load();
       const proj = resolveProject(config, project);
       const api = createApi(proj);
