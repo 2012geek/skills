@@ -43,7 +43,7 @@ Every command returns `{ ok: true|false, ... }` JSON. If `ok: false`, read the `
 | `state-set-scan-time` | `--project owner/repo --time 'ISO'` | `{ ok }` |
 | `state-add-fix` | `--project owner/repo --fix '<JSON>'` | `{ ok }` |
 | `state-add-pr` | `--project owner/repo --pr '<JSON>'` | `{ ok }` |
-| `dedup` | `--findings '<JSON_ARRAY>'` | `{ ok, merged: [...] }` |
+| `dedup` | `--findings '<JSON_ARRAY>'` **or** `--findings-file <path>` | `{ ok, merged: [...] }` |
 | `issue-check-dup` | `--project owner/repo --finding '<JSON>'` | `{ ok, duplicate: null | {number} }` |
 | `issue-create` | `--project owner/repo --finding '<JSON>' --test '<JSON|null>'` | `{ ok, issueNumber, status }` |
 | `issue-list` | `--project owner/repo` | `{ ok, issues: [...] }` |
@@ -58,6 +58,8 @@ Every command returns `{ ok: true|false, ... }` JSON. If `ok: false`, read the `
 | `pr-create` | `--project owner/repo --number 42 --branch bot/fix-42 --title "..." --body "..."` | `{ ok, prNumber, status }` |
 
 **JSON strings**: For args like `--finding`, `--issue`, `--fix`, `--pr`, pass a single-quoted JSON string. Example: `--finding '{"severity":"medium","title":"null pointer","file":"src/main.py","line":42}'`
+
+**Large JSON payloads (e.g. `dedup` findings arrays)**: prefer `--findings-file <path>` over `--findings '<JSON>'`. Inline single-quoted JSON breaks when the payload contains apostrophes or grows past the shell argv limit. Write the JSON to a file under `<project-root>/.tmp/gitcode-bot/scratch/findings.json` first, then pass `--findings-file <path>`. The CLI **refuses to read files outside `<project-root>/.tmp/gitcode-bot/`** — this guarantees scratch files stay co-located with the project and don't pollute `/tmp/` or `~/`.
 
 ## Reference Agent Files
 
@@ -85,6 +87,7 @@ All bot artifacts live under `<project-root>/.tmp/gitcode-bot/`:
 - `config.json` — bot config (tokens, projects)
 - `state/<owner>_<repo>.json` — findings / issues / fixes / PRs
 - `repos/<owner>_<repo>/` — cloned repos used for reading and fixing
+- `scratch/` — transient files (e.g. `findings.json` passed to `--findings-file`); the CLI validates any `--*-file` arg resolves under this dir
 
 **Always invoke this skill from the project root** (or a subdir of it).
 Env overrides `GITCODE_BOT_CONFIG_PATH` and `GITCODE_BOT_STATE_DIR` still work
@@ -195,9 +198,16 @@ Collect all findings into a JSON array.
 
 ### Step 5: Deduplicate findings
 
+Write the findings array to a file under the bot workspace, then pass `--findings-file` (preferred over inline `--findings`, which breaks on apostrophes in JSON and on large payloads):
+
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/skills/bot/scripts/cli.js dedup --findings '<JSON_ARRAY>'
+# Write findings to <project-root>/.tmp/gitcode-bot/scratch/findings.json
+# (the Write tool — do NOT use /tmp/ or any path outside the project)
+
+node ${CLAUDE_PLUGIN_ROOT}/skills/bot/scripts/cli.js dedup --findings-file <project-root>/.tmp/gitcode-bot/scratch/findings.json
 ```
+
+The CLI refuses to read files outside `<project-root>/.tmp/gitcode-bot/` — this enforces that scratch files stay co-located with the project. Parse the `{ ok: true, merged: [...] }` output.
 
 Parse the `{ ok: true, merged: [...] }` output.
 

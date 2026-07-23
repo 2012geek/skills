@@ -17,6 +17,7 @@ const { TestDiscovery } = require('../lib/test-discovery');
 const { TestRunner } = require('../lib/test-runner');
 const { GitCodeAPI, GitManager } = require('../../../lib/gitcode-sdk');
 const { resolveProjectRoot } = require('../../../lib/gitcode-sdk/project-root');
+const fs = require('fs');
 const path = require('path');
 
 // Bot workspace lives under <project-root>/.tmp/gitcode-bot/ so all
@@ -30,7 +31,41 @@ function getWorkspace() {
     configPath: path.join(base, 'config.json'),
     stateDir:   path.join(base, 'state'),
     reposDir:   path.join(base, 'repos'),
+    scratchDir: path.join(base, 'scratch'),
+    root:       base,
   };
+}
+
+// Resolve a file path passed via --findings-file / --issue-file / etc. and
+// enforce that it lives under the bot workspace (<project>/.tmp/gitcode-bot/).
+// Rejects paths outside the workspace (e.g. /tmp/, ~/) so the caller cannot
+// accidentally scatter scratch files across the filesystem. Relative paths
+// are resolved against cwd; the project root is determined by
+// resolveProjectRoot(). Symlinks are NOT followed (realpath) so a symlink
+// pointing outside the workspace is also rejected.
+function resolveBotFile(filePath, wsRoot) {
+  if (!filePath) throw new Error('Missing file path argument.');
+  const abs = path.resolve(filePath);
+  const wsReal = fs.realpathSync(wsRoot);
+  let fileReal;
+  try {
+    fileReal = fs.realpathSync(abs);
+  } catch {
+    throw new Error(
+      `File not found: ${filePath} (resolved: ${abs}). Write the file under ` +
+      `${wsRoot} before passing --findings-file.`
+    );
+  }
+  const wsDir = wsReal + path.sep;
+  if (!fileReal.startsWith(wsDir)) {
+    throw new Error(
+      `Refusing to read ${fileReal}: it is outside the bot workspace ` +
+      `${wsRoot}. All bot scratch files must live under ` +
+      `${path.join(wsRoot, 'scratch')}/ (or another subpath of .tmp/gitcode-bot/). ` +
+      `Write the file there and retry.`
+    );
+  }
+  return fileReal;
 }
 
 function parseArgs(argv) {
@@ -205,9 +240,21 @@ async function handleCommand(command, args) {
 
     // ─── Dedup ─────────────────────────────────────────────
     case 'dedup': {
-      const { findings } = args;
       const deduplicator = new Deduplicator();
-      const merged = deduplicator.deduplicate(JSON.parse(findings));
+      let findingsJSON;
+      if (args['findings-file']) {
+        const resolved = resolveBotFile(args['findings-file'], ws.root);
+        findingsJSON = fs.readFileSync(resolved, 'utf8');
+      } else if (args.findings) {
+        findingsJSON = args.findings;
+      } else {
+        outputError(new Error(
+          'dedup requires either --findings "<JSON>" or --findings-file <path>. ' +
+          'Prefer --findings-file with a file under <project>/.tmp/gitcode-bot/scratch/.'
+        ));
+        break;
+      }
+      const merged = deduplicator.deduplicate(JSON.parse(findingsJSON));
       output({ ok: true, merged });
       break;
     }
