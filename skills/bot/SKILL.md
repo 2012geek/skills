@@ -71,6 +71,25 @@ Read these when you need domain guidance for each scan/fix phase:
 - `${CLAUDE_PLUGIN_ROOT}/skills/bot/agents/test-reproducer.md` — how to write reproduction tests
 - `${CLAUDE_PLUGIN_ROOT}/skills/bot/agents/pr-description-writer.md` — how to write PR descriptions
 
+## Project root resolution
+
+The CLI resolves the project root (where `.tmp/gitcode-bot/` lands) by walking
+up from `process.cwd()` looking for, in order:
+
+1. `gitcode-review.config.json` — strongest signal (created by `/gitcode-tools-setup`).
+2. `.git` — fallback for projects without that file.
+3. If neither is found and cwd is inside the plugin cache, the CLI **throws**
+   rather than silently writing scratch files into the plugin dir.
+
+All bot artifacts live under `<project-root>/.tmp/gitcode-bot/`:
+- `config.json` — bot config (tokens, projects)
+- `state/<owner>_<repo>.json` — findings / issues / fixes / PRs
+- `repos/<owner>_<repo>/` — cloned repos used for reading and fixing
+
+**Always invoke this skill from the project root** (or a subdir of it).
+Env overrides `GITCODE_BOT_CONFIG_PATH` and `GITCODE_BOT_STATE_DIR` still work
+for tests and one-off runs.
+
 ---
 
 ## Pipeline: /gitcode-bot init
@@ -80,7 +99,8 @@ Run:
 node ${CLAUDE_PLUGIN_ROOT}/skills/bot/scripts/cli.js init
 ```
 
-Then tell the user to edit `~/.gitcode-bot/config.json` with their GitCode token and project details:
+This writes an empty config to `<project-root>/.tmp/gitcode-bot/config.json`.
+Then tell the user to edit that file with their GitCode token and project details:
 ```json
 {
   "projects": [

@@ -16,11 +16,22 @@ const { PRManager } = require('../lib/pr-manager');
 const { TestDiscovery } = require('../lib/test-discovery');
 const { TestRunner } = require('../lib/test-runner');
 const { GitCodeAPI, GitManager } = require('../../../lib/gitcode-sdk');
+const { resolveProjectRoot } = require('../../../lib/gitcode-sdk/project-root');
 const path = require('path');
-const os = require('os');
 
-const STATE_DIR = process.env.GITCODE_BOT_STATE_DIR || path.join(os.homedir(), '.gitcode-bot', 'state');
-const REPOS_DIR = path.join(os.homedir(), '.gitcode-bot', 'repos');
+// Bot workspace lives under <project-root>/.tmp/gitcode-bot/ so all
+// artifacts (config, state, cloned repos) stay co-located with the project
+// the user is reviewing — matching the convention used by the `pr` and
+// `code-review-repair` skills. Env overrides remain honored for tests.
+function getWorkspace() {
+  const root = resolveProjectRoot();
+  const base = path.join(root, '.tmp', 'gitcode-bot');
+  return {
+    configPath: path.join(base, 'config.json'),
+    stateDir:   path.join(base, 'state'),
+    reposDir:   path.join(base, 'repos'),
+  };
+}
 
 function parseArgs(argv) {
   const args = {};
@@ -61,7 +72,11 @@ function outputError(error) {
 
 async function handleCommand(command, args) {
   const configPathOverride = process.env.GITCODE_BOT_CONFIG_PATH;
-  const configManager = new ConfigManager(configPathOverride ? { configPath: configPathOverride } : {});
+  const ws = getWorkspace();
+  const stateDir = process.env.GITCODE_BOT_STATE_DIR || ws.stateDir;
+  const reposDir = ws.reposDir;
+  const wsConfigPath = configPathOverride || ws.configPath;
+  const configManager = new ConfigManager({ configPath: wsConfigPath });
 
   switch (command) {
     // ─── Config ────────────────────────────────────────────
@@ -84,7 +99,7 @@ async function handleCommand(command, args) {
     case 'status': {
       try {
         const config = configManager.load();
-        const stateStore = new StateStore(STATE_DIR);
+        const stateStore = new StateStore(stateDir);
         const projectStatuses = [];
 
         for (const proj of config.projects) {
@@ -120,7 +135,7 @@ async function handleCommand(command, args) {
     // ─── State ─────────────────────────────────────────────
     case 'state-get': {
       const { project } = args;
-      const stateStore = new StateStore(STATE_DIR);
+      const stateStore = new StateStore(stateDir);
       const [owner, repo] = project.split('/');
       const state = stateStore.load(owner, repo);
       output({ ok: true, ...state });
@@ -128,7 +143,7 @@ async function handleCommand(command, args) {
     }
     case 'state-add-finding': {
       const { project, finding } = args;
-      const stateStore = new StateStore(STATE_DIR);
+      const stateStore = new StateStore(stateDir);
       const [owner, repo] = project.split('/');
       const parsedFinding = JSON.parse(finding);
       if (!parsedFinding.id) {
@@ -141,7 +156,7 @@ async function handleCommand(command, args) {
     }
     case 'state-update-finding': {
       const { project, id, status } = args;
-      const stateStore = new StateStore(STATE_DIR);
+      const stateStore = new StateStore(stateDir);
       const [owner, repo] = project.split('/');
       stateStore.updateFinding(owner, repo, id, { status });
       output({ ok: true });
@@ -149,7 +164,7 @@ async function handleCommand(command, args) {
     }
     case 'state-add-issue': {
       const { project, issue } = args;
-      const stateStore = new StateStore(STATE_DIR);
+      const stateStore = new StateStore(stateDir);
       const [owner, repo] = project.split('/');
       stateStore.addIssue(owner, repo, JSON.parse(issue));
       output({ ok: true });
@@ -157,7 +172,7 @@ async function handleCommand(command, args) {
     }
     case 'state-update-issue': {
       const { project, number, status } = args;
-      const stateStore = new StateStore(STATE_DIR);
+      const stateStore = new StateStore(stateDir);
       const [owner, repo] = project.split('/');
       stateStore.updateIssue(owner, repo, parseInt(number), { status });
       output({ ok: true });
@@ -165,7 +180,7 @@ async function handleCommand(command, args) {
     }
     case 'state-set-scan-time': {
       const { project, time } = args;
-      const stateStore = new StateStore(STATE_DIR);
+      const stateStore = new StateStore(stateDir);
       const [owner, repo] = project.split('/');
       stateStore.setLastScanAt(owner, repo, time);
       output({ ok: true });
@@ -173,7 +188,7 @@ async function handleCommand(command, args) {
     }
     case 'state-add-fix': {
       const { project, fix } = args;
-      const stateStore = new StateStore(STATE_DIR);
+      const stateStore = new StateStore(stateDir);
       const [owner, repo] = project.split('/');
       stateStore.addFix(owner, repo, JSON.parse(fix));
       output({ ok: true });
@@ -181,7 +196,7 @@ async function handleCommand(command, args) {
     }
     case 'state-add-pr': {
       const { project, pr } = args;
-      const stateStore = new StateStore(STATE_DIR);
+      const stateStore = new StateStore(stateDir);
       const [owner, repo] = project.split('/');
       stateStore.addPR(owner, repo, JSON.parse(pr));
       output({ ok: true });
@@ -257,7 +272,7 @@ async function handleCommand(command, args) {
       const { project, number } = args;
       const config = configManager.load();
       const proj = resolveProject(config, project);
-      const stateStore = new StateStore(STATE_DIR);
+      const stateStore = new StateStore(stateDir);
       const [owner, repo] = project.split('/');
       const state = stateStore.load(owner, repo);
       const issue = state.issues.find(i => i.issueNumber === parseInt(number));
@@ -288,7 +303,7 @@ async function handleCommand(command, args) {
       const { project } = args;
       const config = configManager.load();
       const proj = resolveProject(config, project);
-      const gitManager = new GitManager({ reposDir: REPOS_DIR });
+      const gitManager = new GitManager({ reposDir });
       const cloneUrl = `https://gitcode.com/${proj.owner}/${proj.repo}.git`;
       const localPath = await gitManager.cloneRepo(cloneUrl, proj.owner, proj.repo);
       output({ ok: true, localPath });
@@ -296,14 +311,14 @@ async function handleCommand(command, args) {
     }
     case 'git-branch': {
       const { 'repo-path': repoPath, name } = args;
-      const gitManager = new GitManager({ reposDir: REPOS_DIR });
+      const gitManager = new GitManager({ reposDir });
       await gitManager.createBranch(repoPath, name);
       output({ ok: true });
       break;
     }
     case 'git-push': {
       const { 'repo-path': repoPath, name } = args;
-      const gitManager = new GitManager({ reposDir: REPOS_DIR });
+      const gitManager = new GitManager({ reposDir });
       await gitManager.pushBranch(repoPath, name);
       output({ ok: true });
       break;

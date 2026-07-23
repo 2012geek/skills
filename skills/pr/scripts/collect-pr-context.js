@@ -26,52 +26,10 @@ const fs = require('fs');
 // relocations.
 const libPath = path.join(__dirname, '..', 'lib');
 const { GitCodeAPI } = require(path.join(libPath, 'gitcode-api.js'));
-
-/**
- * Resolve the project root directory (where `.tmp/` and config files should
- * land), independent of the caller's cwd. Mirrors repair-pr.js logic.
- *
- * Strategy (first match wins):
- *   1. Walk up from cwd looking for `gitcode-review.config.json`
- *      (project-specific file created by /gitcode-tools-setup).
- *   2. Walk up looking for `.git` (ad-hoc review before setup).
- *   3. If neither marker is found AND cwd is inside the plugin cache, fail.
- *   4. Otherwise return cwd (ad-hoc project root with no git).
- */
-function resolveProjectRoot() {
-  const STRONG_MARKER = 'gitcode-review.config.json';
-  const WEAK_MARKER = '.git';
-  const cwd = process.cwd();
-  const root = path.parse(cwd).root;
-
-  let cur = cwd;
-  while (cur !== root) {
-    if (fs.existsSync(path.join(cur, STRONG_MARKER))) return cur;
-    cur = path.dirname(cur);
-  }
-  if (fs.existsSync(path.join(root, STRONG_MARKER))) return root;
-
-  cur = cwd;
-  while (cur !== root) {
-    if (fs.existsSync(path.join(cur, WEAK_MARKER))) return cur;
-    cur = path.dirname(cur);
-  }
-  if (fs.existsSync(path.join(root, WEAK_MARKER))) return root;
-
-  if (isInsidePluginCache(cwd)) {
-    throw new Error(
-      `Could not resolve project root: no gitcode-review.config.json or .git ` +
-      `found walking up from ${cwd}, and cwd is inside the plugin cache. ` +
-      `Run this skill from your project root, or run /gitcode-tools-setup first.`
-    );
-  }
-
-  return cwd;
-}
-
-function isInsidePluginCache(dir) {
-  return dir.replace(/\\/g, '/').includes('/.claude/plugins/cache/');
-}
+const {
+  resolveProjectRoot,
+  isInsidePluginCache,
+} = require('../../../lib/gitcode-sdk/project-root');
 
 function scratchDir(prNumber) {
   return path.join(resolveProjectRoot(), '.tmp', 'pr', `pr-${prNumber}`);
