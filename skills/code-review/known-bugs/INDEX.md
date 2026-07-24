@@ -9,3 +9,5 @@ not by keyword match. The planner must justify every relevant / not-relevant
 judgment in its `knownBugRelevance` output.
 
 - [assert-vs-raise.md](assert-vs-raise.md) — Python validation-path assert should be ValueError (survives `python -O`)
+- [gitcode-api-position-bug.md](gitcode-api-position-bug.md) — GitCode inline comment position uses new-file line numbers, not diff-relative
+- [en-cn-drift.md](en-cn-drift.md) — .md and .cn.md file pairs describing different structures after partial updates
