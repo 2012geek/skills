@@ -1069,6 +1069,70 @@ class GitCodeReviewer {
     await fs.writeFile(outPath, JSON.stringify(plan, null, 2), 'utf-8');
     return outPath;
   }
+
+  /**
+   * Given a validated review-plan.json, generate one prompt file per agent.
+   * Uses the named template if it exists in agents/; otherwise uses _generic.
+   * Injects planner-specified focusAreas and relevant known-bugs entries.
+   *
+   * @param {object} plan - validated review-plan.json
+   * @param {string} outDir - .tmp/gitcode-review/pr-<N>/
+   * @param {object} opts - { prNumber: number }
+   * @returns {Promise<{promptFiles: [{agentName, path}]}>}
+   */
+  async generateAgentPromptsFromPlan(plan, outDir, opts) {
+    const fs = require('fs').promises;
+    const path = require('path');
+    const { AgentRunner } = require('../lib/agent-runner');
+    const { loadKnownBugFile, filterRelevance } = require('../lib/known-bugs-loader');
+
+    await fs.mkdir(outDir, { recursive: true });
+    const agentRunner = new AgentRunner(this.config);
+    const kbDir = path.join(__dirname, '..', 'known-bugs');
+    const relevantKb = filterRelevance(plan.knownBugRelevance);
+
+    const promptFiles = [];
+    const agents = plan.reviewPlan.agents || [];
+    for (let i = 0; i < agents.length; i++) {
+      const agentSpec = agents[i];
+      let template;
+      try {
+        template = await agentRunner.loadAgent(agentSpec.name);
+      } catch (e) {
+        template = await agentRunner.loadAgent('_generic');
+      }
+      const focusAreas = (agentSpec.focusAreas || []).map(f => `- ${f}`).join('\n');
+      const injectFiles = (agentSpec.injectKnownBugs || [])
+        .filter(f => relevantKb.some(r => r.file === f));
+      let kbSection = '';
+      if (injectFiles.length > 0) {
+        const blocks = injectFiles.map(f => `### ${f}\n\n${loadKnownBugFile(kbDir, f)}`);
+        kbSection = `## 已知 bug 参考\n\n${blocks.join('\n\n')}\n\n`;
+      }
+      const prompt = [
+        template.definition,
+        '',
+        '---',
+        '',
+        `## 本次审查重点 (focusAreas)`,
+        '',
+        focusAreas || '(planner 未指定具体重点，按模板默认职责审查)',
+        '',
+        kbSection,
+        `## 输出`,
+        '',
+        `用 \`Write\` 工具把 JSON 数组写到 \`.tmp/gitcode-review/pr-${opts.prNumber}/issue-${i}.json\`.`,
+        '',
+        '不要创建 Git worktree、不要 fetch 或 clone、不要访问网络、不要写到该路径之外。',
+      ].filter(s => s !== null).join('\n');
+
+      const filename = `prompt-${i}-${agentSpec.name}.md`;
+      const pPath = path.join(outDir, filename);
+      await fs.writeFile(pPath, prompt, 'utf-8');
+      promptFiles.push({ agentName: agentSpec.name, path: pPath });
+    }
+    return { promptFiles };
+  }
 }
 
 /**
