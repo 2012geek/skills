@@ -39,7 +39,66 @@ When `reviewGuidePath` is set in config.json, the reviewer auto-loads it — no 
 
 When running from a plugin host that exposes the skill directory, use that path directly, for example `${CLAUDE_SKILL_DIR}/scripts/gitcode-reviewer.js`. Otherwise run the script by absolute path or from a checkout containing `skills/code-review`.
 
-## Steps
+## Planner-first flow (default)
+
+When `codeReview.plannerEnabled` is `true` (default), the skill runs a
+planner-first flow: an opus agent reads the PR + `known-bugs/INDEX.md`
++ review guide, proposes a dynamic review plan, the user approves at a
+checkpoint, then the plan executes.
+
+### Steps
+
+1. **Verify configuration** (same as the fallback flow below).
+2. **Resolve comment language** (same as below).
+3. **Resolve review guide** (same as below).
+4. **Run planner** — generate a planner prompt and dispatch a subagent:
+   ```bash
+   node <skill-dir>/scripts/gitcode-reviewer.js --pr <pr-number> --plan-only --comment-language <en|zh> [--review-guide <path>]
+   ```
+   This writes `.tmp/gitcode-review/pr-<pr-number>/planner-prompt.md`.
+   Dispatch an opus subagent: "Read `.tmp/gitcode-review/pr-<pr-number>/planner-prompt.md`, follow it, then use `Write` to write `review-plan.json` to `.tmp/gitcode-review/pr-<pr-number>/review-plan.json`."
+
+5. **Checkpoint** — read `.tmp/gitcode-review/pr-<pr-number>/review-plan.json`, present the plan to the user (summary, risk areas, agents, non-agent tasks, skipped agents, known-bug relevance, open questions). User approves, adjusts, or vetoes.
+
+6. **Execute plan** — generate per-agent prompts from the plan:
+   ```bash
+   node <skill-dir>/scripts/gitcode-reviewer.js --pr <pr-number> --execute-plan .tmp/gitcode-review/pr-<pr-number>/review-plan.json --comment-language <en|zh>
+   ```
+   (This flag will be added in Task 11; for now, use `--auto-review` fallback when the plan exists.)
+
+   Dispatch one subagent per generated prompt file in parallel, same as the old flow step 5. Each writes `issue-<i>.json`.
+
+   For `nonAgentTasks` (run-tests, grep-usage): execute via Bash in parallel with the agents. Capture output to `.tmp/gitcode-review/pr-<pr-number>/task-<i>-<type>.txt`.
+
+7. **Aggregate + preview** (same as old flow step 6):
+   ```bash
+   node <skill-dir>/scripts/gitcode-reviewer.js --pr <pr-number> --collect-issues-from .tmp/gitcode-review/pr-<pr-number> --comment-language <en|zh> --skip-validation
+   ```
+
+8. **Approve + post** (same as old flow step 7):
+   ```bash
+   node <skill-dir>/scripts/gitcode-reviewer.js --pr <pr-number> --collect-issues-from .tmp/gitcode-review/pr-<pr-number> --post --approve-all --comment-language <en|zh>
+   ```
+
+### Fallback: `--no-planner`
+
+If the planner misbehaves, add `--no-planner` to skip step 4-5 and fall back to the old 5-agent pipeline (see "Steps" section below).
+
+### Config additions
+
+```json
+"codeReview": {
+  "plannerModel": "opus",
+  "plannerEnabled": true,
+  "knownBugsDir": "known-bugs"
+}
+```
+
+`knownBugsDir` can be a project-local override path (e.g. `.claude/known-bugs`) — the script merges built-in + project-local, project-local wins on filename collision.
+
+---
+
+## Fallback flow: --no-planner (legacy 5-agent pipeline)
 
 1. Verify configuration. Use separate tool calls — do not combine `if`/`echo`/`cat` into one bash command, since combined commands don't match permission rules and will prompt.
    - Check the token with a narrow echo: `echo "GITCODE_TOKEN set: ${GITCODE_TOKEN:+yes}"` (no value printed — just whether it's set).
