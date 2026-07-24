@@ -1041,6 +1041,34 @@ class GitCodeReviewer {
       generatedAt: new Date().toISOString()
     };
   }
+
+  /**
+   * Build the planner agent prompt for the given PR context.
+   * Delegates to lib/planner-prompt-builder.js.
+   */
+  async buildPlannerPrompt(context) {
+    const { buildPlannerPrompt } = require('../lib/planner-prompt-builder');
+    const kbDir = path.join(__dirname, '..', 'known-bugs');
+    return await buildPlannerPrompt(context, kbDir);
+  }
+
+  /**
+   * Validate and persist review-plan.json to the given directory.
+   * Returns the absolute path to the written file.
+   * Throws if the plan fails schema validation.
+   */
+  async writeReviewPlan(plan, outDir) {
+    const { validateReviewPlan } = require('../lib/review-plan-schema');
+    const result = validateReviewPlan(plan);
+    if (!result.valid) {
+      throw new Error(`invalid review-plan: ${result.errors.join('; ')}`);
+    }
+    const fs = require('fs').promises;
+    await fs.mkdir(outDir, { recursive: true });
+    const outPath = path.join(outDir, 'review-plan.json');
+    await fs.writeFile(outPath, JSON.stringify(plan, null, 2), 'utf-8');
+    return outPath;
+  }
 }
 
 /**
@@ -1055,6 +1083,7 @@ async function main() {
     force: args.includes('--force'),
     dryRun: args.includes('--dry-run'),
     autoReview: args.includes('--auto-review'),  // 🔧 方案1: 自动执行所有 agents
+    planOnly: args.includes('--plan-only'),
     issuesFromStdin: args.includes('--issues-from-stdin'),
     post: args.includes('--post'),
     approveAll: args.includes('--approve-all'),
@@ -1231,6 +1260,17 @@ async function main() {
     } else if (options.collectIssuesFrom) {
       // 从目录聚合所有 agent 输出的 issues
       await reviewer.reviewFromDir(options.prNumber, options.collectIssuesFrom, options);
+    } else if (options.planOnly) {
+      // Plan-only mode: build planner prompt and short-circuit before any other work.
+      const context = await reviewer.step2_GatherContext(options.prNumber);
+      const plannerPrompt = await reviewer.buildPlannerPrompt(context);
+      const outDir = path.join(process.cwd(), '.tmp', 'gitcode-review', `pr-${options.prNumber}`);
+      const fs = require('fs').promises;
+      await fs.mkdir(outDir, { recursive: true });
+      const promptPath = path.join(outDir, 'planner-prompt.md');
+      await fs.writeFile(promptPath, plannerPrompt, 'utf-8');
+      console.log(`Planner prompt written to: ${promptPath}`);
+      console.log('Run this prompt through an opus subagent, then call writeReviewPlan.');
     } else if (options.autoReview) {
       // 🔧 方案1: 自动执行所有 agents，输出结构化 JSON
       console.log('🤖 自动审查模式 - 执行所有 agents\n');
