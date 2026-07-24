@@ -1053,6 +1053,37 @@ class GitCodeReviewer {
   }
 
   /**
+   * Scan the agents/ directory and return one-line template descriptors
+   * (excluding _generic.md and planner.md itself, which are infrastructure).
+   * The planner reads this list to decide which template to apply.
+   */
+  listAgentTemplates() {
+    const fs = require('fs');
+    const path = require('path');
+    const agentsDir = path.join(__dirname, '..', 'agents');
+    if (!fs.existsSync(agentsDir)) return [];
+    const skip = new Set(['_generic.md', 'planner.md', 'pre-check.md', 'issue-validator.md']);
+    const templates = [];
+    for (const file of fs.readdirSync(agentsDir)) {
+      if (!file.endsWith('.md') || skip.has(file)) continue;
+      const content = fs.readFileSync(path.join(agentsDir, file), 'utf-8');
+      const fmMatch = content.match(/^---\n([\s\S]+?)\n---/);
+      if (!fmMatch) continue;
+      const fm = fmMatch[1];
+      const get = key => {
+        const m = fm.match(new RegExp(`^${key}\\s*:\\s*(.+)$`, 'm'));
+        return m ? m[1].trim().replace(/^["']|["']$/g, '') : '';
+      };
+      templates.push({
+        name: get('name') || path.basename(file, '.md'),
+        model: get('model') || 'inherit',
+        description: get('description') || '',
+      });
+    }
+    return templates;
+  }
+
+  /**
    * Validate and persist review-plan.json to the given directory.
    * Returns the absolute path to the written file.
    * Throws if the plan fails schema validation.
@@ -1348,8 +1379,39 @@ async function main() {
       return { promptFiles };
     } else if (options.planOnly) {
       // Plan-only mode: build planner prompt and short-circuit before any other work.
-      const context = await reviewer.step2_GatherContext(options.prNumber);
-      const plannerPrompt = await reviewer.buildPlannerPrompt(context);
+      const rawContext = await reviewer.step2_GatherContext(options.prNumber);
+      // Adapt the script's context shape to the planner-prompt-builder's expected shape.
+      // The builder consumes { pr: { url, description, isDraft }, files: [{ path, status }], diff, commitMessages, reviewGuide, agentTemplateIndex }.
+      // step2_GatherContext returns { pr: { htmlUrl, body }, files: [{ filename, status, patch }] } — no unified diff string.
+      const plannerContext = {
+        pr: {
+          number: rawContext.pr.number,
+          title: rawContext.pr.title,
+          url: rawContext.pr.htmlUrl,
+          author: rawContext.pr.author,
+          isDraft: false,
+          description: rawContext.pr.body || '',
+        },
+        commitMessages: rawContext.commitMessages || [],
+        files: (rawContext.files || []).map(f => ({
+          path: f.filename,
+          additions: f.additions,
+          deletions: f.deletions,
+          // GitCode's API leaves `status` undefined for modified files; normalize so the
+          // planner sees a meaningful value rather than `[undefined]`.
+          status: f.status || (f.deletions > 0 && f.additions > 0 ? 'modified' : (f.additions > 0 ? 'added' : (f.deletions > 0 ? 'deleted' : 'modified'))),
+        })),
+        diff: (rawContext.files || [])
+          .filter(f => f.patch)
+          .map(f => {
+            const patchStr = typeof f.patch === 'string' ? f.patch : (f.patch.diff || JSON.stringify(f.patch, null, 2));
+            return `diff --git a/${f.filename} b/${f.filename}\n${patchStr}`;
+          })
+          .join('\n\n'),
+        reviewGuide: options.reviewGuidePath ? require('fs').readFileSync(options.reviewGuidePath, 'utf-8') : undefined,
+        agentTemplateIndex: reviewer.listAgentTemplates ? reviewer.listAgentTemplates() : [],
+      };
+      const plannerPrompt = await reviewer.buildPlannerPrompt(plannerContext);
       const outDir = path.join(process.cwd(), '.tmp', 'gitcode-review', `pr-${options.prNumber}`);
       const fs = require('fs').promises;
       await fs.mkdir(outDir, { recursive: true });
