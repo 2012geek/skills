@@ -1161,7 +1161,8 @@ async function main() {
     issuesFromJson: null,
     approveList: null,
     commentLanguage: null,
-    reviewGuidePath: null
+    reviewGuidePath: null,
+    executePlan: null
   };
 
   // 查找 --pr 参数
@@ -1181,6 +1182,12 @@ async function main() {
   if (promptsToIndex !== -1) {
     const next = args[promptsToIndex + 1];
     options.promptsTo = next && !next.startsWith('--') ? next : '';
+  }
+
+  // 查找 --execute-plan 参数（指向 review-plan.json 文件路径）
+  const executePlanIndex = args.indexOf('--execute-plan');
+  if (executePlanIndex !== -1 && args[executePlanIndex + 1]) {
+    options.executePlan = args[executePlanIndex + 1];
   }
 
   // 查找 --collect-issues-from 参数（目录，读所有 *.json 合并）
@@ -1324,6 +1331,21 @@ async function main() {
     } else if (options.collectIssuesFrom) {
       // 从目录聚合所有 agent 输出的 issues
       await reviewer.reviewFromDir(options.prNumber, options.collectIssuesFrom, options);
+    } else if (options.executePlan) {
+      const fs = require('fs').promises;
+      const path = require('path');
+      const planRaw = await fs.readFile(options.executePlan, 'utf-8');
+      const plan = JSON.parse(planRaw);
+      const { validateReviewPlan } = require('../lib/review-plan-schema');
+      const result = validateReviewPlan(plan);
+      if (!result.valid) {
+        throw new Error(`review-plan.json invalid: ${result.errors.join('; ')}`);
+      }
+      const outDir = path.join(process.cwd(), '.tmp', 'gitcode-review', `pr-${options.prNumber}`);
+      const { promptFiles } = await reviewer.generateAgentPromptsFromPlan(plan, outDir, { prNumber: options.prNumber });
+      console.log(`Generated ${promptFiles.length} agent prompt(s) from review-plan.json:`);
+      promptFiles.forEach(p => console.log(`  - ${p.agentName}: ${p.path}`));
+      return { promptFiles };
     } else if (options.planOnly) {
       // Plan-only mode: build planner prompt and short-circuit before any other work.
       const context = await reviewer.step2_GatherContext(options.prNumber);
