@@ -109,6 +109,7 @@ def from_config(cls, config):
   "severity": "error",
   "file": "path/to/file.py",
   "line": 42,
+  "confidence": 90,
   "description": "类方法 is_next_pred_need_obs 通过 cls 访问实例变量 _action_queue",
   "contextCode": "@classmethod\ndef is_next_pred_need_obs(cls) -> bool:\n    return len(cls._action_queue) == 0",
   "fix": {
@@ -127,10 +128,11 @@ def from_config(cls, config):
 | type | string | 是 | 问题类型：logic_error, api_misuse |
 | severity | string | 是 | 严重程度：error, warning |
 | file | string | 是 | 文件路径 |
-| line | number | 是 | 问题行号 |
+| line | number | 是 | 问题行号。**缺字段 = 验证失败 = 被拒绝**。若无法定位具体行，用 `1` |
 | description | string | 是 | 问题描述 |
 | contextCode | string | 是 | 上下文代码 |
 | fix | object | 是 | 修复方案（code + explanation） |
+| confidence | number | 是 | 置信度 0-100。**缺字段 = 验证失败 = 被拒绝**。低于阈值（默认 80）的不要输出 |
 | referenceCategories | array | 否 | 推荐的文档类别数组，系统将自动填充对应的官方文档链接 |
 
 ## 特殊情况

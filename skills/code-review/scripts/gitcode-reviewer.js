@@ -645,14 +645,30 @@ class GitCodeReviewer {
   async step5_ValidateIssues(issues, context) {
     console.log('Step 5: 独立验证...');
 
+    // Schema validation first — reject missing-field issues before threshold
+    // filtering. Without this gate, an agent that omits `confidence` would
+    // pass step5 (schema not checked) and get silently dropped in step6
+    // (`undefined >= 80` is false). Fail loud: surface rejections in preview.
+    const { validateIssues } = require('../lib/issue-schema');
+    const { accepted: schemaValid, rejectedInvalid } = validateIssues(issues);
+    if (rejectedInvalid.length > 0) {
+      console.log(`  ⚠️  Schema 拒绝: ${rejectedInvalid.length}/${issues.length} 个 issue 缺字段或类型错误`);
+      for (const r of rejectedInvalid) {
+        const loc = r.issue && r.issue.file ? `${r.issue.file}:${r.issue.line ?? '?'}` : '<no file>';
+        console.log(`    ⊘ ${loc} — ${r.errors.join('; ')}`);
+      }
+    }
+    this._lastRejectedInvalid = rejectedInvalid;
+    const schemaAccepted = schemaValid;
+
     if (this.config.codeReview.skipValidation) {
-      console.log('  ⊘ 跳过验证 (--skip-validation)\n');
-      return issues;
+      console.log('  ⊘ 跳过语义验证 (--skip-validation)\n');
+      return schemaAccepted;
     }
 
     // 只验证标记为需要验证的问题
-    const needsValidation = issues.filter(i => i.needsValidation);
-    const noValidationNeeded = issues.filter(i => !i.needsValidation);
+    const needsValidation = schemaAccepted.filter(i => i.needsValidation);
+    const noValidationNeeded = schemaAccepted.filter(i => !i.needsValidation);
 
     const validated = [];
 
@@ -670,7 +686,7 @@ class GitCodeReviewer {
     }
 
     const allValidated = [...validated, ...noValidationNeeded];
-    console.log(`  ✅ 验证完成: ${allValidated.length}/${issues.length}\n`);
+    console.log(`  ✅ 验证完成: ${allValidated.length}/${schemaAccepted.length} (schema 拒绝 ${rejectedInvalid.length})\n`);
     return allValidated;
   }
 
@@ -693,28 +709,59 @@ class GitCodeReviewer {
 
   /**
    * Step 6: 过滤 + 去重
+   *
+   * 分桶策略（防止静默丢弃）:
+   *   accepted              = 通过阈值 + dedup（最终评论）
+   *   rejectedBelowThreshold= confidence < 阈值（正常过滤，仅计数）
+   *   rejectedInvalid       = 缺字段或类型错误（来自 step5 schema 验证，附原因）
+   *   dedupedOut            = 通过阈值但与已接受的 issue 同 key（dedup 副产品）
+   *
+   * 之前: `i.confidence >= threshold` 对 undefined 返回 false → 静默丢，
+   * 5 个 en-cn-parity 发现全部消失，预览显示"0 个问题"且无警告。
+   * 现在: schema 违规在 step5 已分桶并显示原因，这里只对 accepted 跑阈值。
    */
   step6_FilterIssues(issues) {
     console.log('Step 6: 过滤 + 去重...');
 
-    // 按置信度过滤
-    const filtered = issues.filter(i =>
-      i.confidence >= this.config.codeReview.confidenceThreshold
-    );
+    const rejectedInvalid = this._lastRejectedInvalid || [];
+    const threshold = this.config.codeReview.confidenceThreshold;
+
+    // 按置信度过滤（schema 已保证 confidence 是整数，这里不需要再判 undefined）
+    const aboveThreshold = issues.filter(i => i.confidence >= threshold);
+    const rejectedBelowThreshold = issues.filter(i => i.confidence < threshold);
+
+    if (rejectedBelowThreshold.length > 0) {
+      console.log(`  ⊘ 低于阈值 ${threshold}: ${rejectedBelowThreshold.length} 个`);
+    }
 
     // 按文件+行号+类型去重
     const seen = new Set();
     const unique = [];
+    const dedupedOut = [];
 
-    for (const issue of filtered) {
+    for (const issue of aboveThreshold) {
       const key = `${issue.file}:${issue.line}:${issue.type}`;
       if (!seen.has(key)) {
         seen.add(key);
         unique.push(issue);
+      } else {
+        dedupedOut.push(issue);
       }
     }
 
-    console.log(`  ✅ 去重后: ${unique.length} 个问题\n`);
+    this._lastFilterStats = {
+      total: issues.length + rejectedInvalid.length,
+      accepted: unique.length,
+      rejectedInvalid,
+      rejectedBelowThreshold,
+      dedupedOut,
+      threshold,
+    };
+
+    const invalidCount = rejectedInvalid.length;
+    const belowCount = rejectedBelowThreshold.length;
+    const dedupCount = dedupedOut.length;
+    console.log(`  ✅ 去重后: ${unique.length} 个问题 (拒绝: ${invalidCount} schema, ${belowCount} 低于阈值, ${dedupCount} 重复)\n`);
     return unique;
   }
 
@@ -797,11 +844,48 @@ class GitCodeReviewer {
   }
 
   previewComments(comments) {
+    this.previewFilterStats();
     console.log('\n📋 评论预览:\n');
     comments.forEach((comment, index) => {
       const firstLine = comment.body.split('\n').find(Boolean) || '';
       console.log(`[${index + 1}] ${comment.path}:${comment.line || '?'} ${firstLine}`);
     });
+    console.log('');
+  }
+
+  /**
+   * 显示 schema/阈值/dedup 拒绝统计，让坏 agent 一眼可见。
+   * 解决 "5 个发现 → 静默变 0 个问题" 的失败模式：用户看到拒绝原因，
+   * 能判断是 agent 模板问题还是真的没问题。
+   */
+  previewFilterStats() {
+    const stats = this._lastFilterStats;
+    if (!stats) return;
+
+    console.log('\n📊 过滤统计:');
+    console.log(`   输入: ${stats.total} | 接受: ${stats.accepted} | 拒绝: ${stats.rejectedInvalid.length + stats.rejectedBelowThreshold.length + stats.dedupedOut.length}`);
+
+    if (stats.rejectedInvalid.length > 0) {
+      console.log(`   Schema 拒绝 (${stats.rejectedInvalid.length}):`);
+      for (const r of stats.rejectedInvalid) {
+        const loc = r.issue && r.issue.file ? `${r.issue.file}:${r.issue.line ?? '?'}` : '<no file>';
+        console.log(`     ⊘ ${loc} — ${r.errors.join('; ')}`);
+      }
+    }
+
+    if (stats.rejectedBelowThreshold.length > 0) {
+      console.log(`   低于阈值 ${stats.threshold} (${stats.rejectedBelowThreshold.length}):`);
+      for (const i of stats.rejectedBelowThreshold) {
+        console.log(`     ⊘ ${i.file}:${i.line ?? '?'} confidence=${i.confidence}`);
+      }
+    }
+
+    if (stats.dedupedOut.length > 0) {
+      console.log(`   Dedup 重复 (${stats.dedupedOut.length}):`);
+      for (const i of stats.dedupedOut) {
+        console.log(`     ⊘ ${i.file}:${i.line ?? '?'} (${i.type}) — 与已接受 issue 同 key`);
+      }
+    }
     console.log('');
   }
 
@@ -837,6 +921,7 @@ class GitCodeReviewer {
    * 显示问题预览而不提交
    */
   previewDryRunIssues(filteredIssues) {
+    this.previewFilterStats();
     console.log('\n📋 DRY RUN 模式 - 发现的问题预览:\n');
     console.log(`共 ${filteredIssues.length} 个问题:\n`);
     filteredIssues.forEach((issue, i) => {

@@ -35,7 +35,13 @@ color: yellow
 
 ## 输出格式
 
-同通用 agent 的 JSON schema。`type` 字段用 `documentation` 或 `bug`（严重误导时）。
+同通用 agent 的 JSON schema（必填字段约定见 `agents/_generic.md` 的"必填字段约定"小节）。`type` 字段用 `documentation` 或 `bug`（严重误导时）。
+
+**关键提醒**：
+- `line` 必填。文档漂移用文档中描述错误结构的具体行号；若整文件级别都漂移，用 `1`，不要省略。
+- `confidence` 必填。低于阈值的不要输出。
+- `contextCode` 必填。引用 diff 中能体现漂移的代码或文档片段。
+- `fix.code` + `fix.explanation` 必填。
 
 如果所有文档声明都与代码一致，输出 `[]`。
 

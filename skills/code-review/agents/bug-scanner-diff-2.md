@@ -142,6 +142,11 @@ color: red
       "confidence": 95,
       "title": "简短描述问题",
       "description": "详细说明为什么这是个问题",
+      "contextCode": "相关代码片段（5-10 行，来自 diff）",
+      "fix": {
+        "code": "修复代码",
+        "explanation": "修复说明"
+      },
       "referenceCategories": ["python_dataclass"]
     }
   ]
@@ -150,15 +155,18 @@ color: red
 
 ## 字段说明
 
-| 字段 | 说明 |
-|------|------|
-| file | 文件路径 |
-| line | 问题所在的行号（新文件中的行号） |
-| type | 问题类型 |
-| severity | critical (阻断性) 或 error (错误) |
-| confidence | 置信度 0-100，只报告 >= 80 的 |
-| title | 问题标题，简洁明了 |
-| description | 问题描述 |
-| referenceCategories | array | 否 | 推荐的文档类别数组，系统将自动填充对应的官方文档链接 |
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `file` | ✅ | 文件路径（相对仓库根目录） |
+| `line` | ✅ | 1-based 行号（**新文件**中的行号）。缺字段 = 验证失败 = 被拒绝 |
+| `type` | ✅ | 问题类型 |
+| `severity` | ✅ | `critical`（阻断性）或 `error`（错误） |
+| `confidence` | ✅ | 0-100 整数。**缺字段 = 验证失败 = 被拒绝**。低于阈值（默认 80）的不要输出 |
+| `title` | ✅ | 简短问题标题 |
+| `description` | ✅ | 详细说明根因和影响 |
+| `contextCode` | ✅ | 来自 diff 的实际代码片段（5-10 行），不要凭记忆写 |
+| `fix.code` | ✅ | 可落地的修复代码 |
+| `fix.explanation` | ✅ | 修复思路 |
+| `referenceCategories` | ❌ | 可选，文档类别数组 |
 
 请开始扫描。

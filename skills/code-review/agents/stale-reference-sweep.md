@@ -32,7 +32,13 @@ color: yellow
 
 ## 输出格式
 
-同通用 agent 的 JSON schema。`type` 字段用 `bug`（代码残留）或 `documentation`（文档残留）。
+同通用 agent 的 JSON schema（必填字段约定见 `agents/_generic.md` 的"必填字段约定"小节）。`type` 字段用 `bug`（代码残留）或 `documentation`（文档残留）。
+
+**关键提醒**：
+- `line` 必填。残留引用若无法定位具体行（例如"全文件未找到 oldName"是负面发现），用残留最可能出现的位置或 `1`，不要省略。
+- `confidence` 必填。低于阈值的不要输出。
+- `contextCode` 必填。引用 diff 中能体现残留或被删符号的相关代码片段。
+- `fix.code` + `fix.explanation` 必填。
 
 如果没有任何残留引用，输出 `[]`。
 

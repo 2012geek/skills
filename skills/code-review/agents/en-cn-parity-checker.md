@@ -36,7 +36,13 @@ color: yellow
 
 ## 输出格式
 
-同通用 agent 的 JSON schema。`type` 字段用 `documentation`，`severity` 通常为 `warning`（轻微）或 `error`（严重 drift）。
+同通用 agent 的 JSON schema（必填字段约定见 `agents/_generic.md` 的"必填字段约定"小节）。`type` 字段用 `documentation`，`severity` 通常为 `warning`（轻微）或 `error`（严重 drift）。
+
+**关键提醒**：
+- `line` 必填。文档漂移若无法定位具体行，用 `1`（GitCode 行内评论附在文件首行，仍可见），不要省略。
+- `confidence` 必填。低于阈值的不要输出。
+- `contextCode` 必填。引用 diff 中的实际内容（EN 或 CN 那边的相关行），不要空着。
+- `fix.code` + `fix.explanation` 必填。
 
 如果所有文件对都一致，输出 `[]`。
 

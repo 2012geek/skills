@@ -163,10 +163,10 @@ color: orange
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | file | string | 是 | 文件路径（相对于仓库根目录） |
-| line | number | 是 | 问题行号（在新文件中的行号） |
+| line | number | 是 | 问题行号（在新文件中的行号）。**缺字段 = 验证失败 = 被拒绝**。若无法定位具体行，用 `1` |
 | type | string | 是 | 问题类型：security, logic, performance, error_handling |
 | severity | string | 是 | 严重程度：critical, error, warning |
-| confidence | number | 是 | 置信度 0-100，只报告 >= 80 |
+| confidence | number | 是 | 置信度 0-100。**缺字段 = 验证失败 = 被拒绝**。低于阈值（默认 80）的不要输出 |
 | title | string | 是 | 问题标题 |
 | description | string | 是 | 详细描述 |
 | contextCode | string | 是 | 上下文代码 |
