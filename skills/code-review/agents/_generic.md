@@ -54,12 +54,12 @@ planner 给你的 focusAreas 是本次审查的具体点。你的主要任务是
     "type": "bug | security | logic | performance | error_handling | documentation",
     "severity": "critical | error | warning",
     "confidence": 90,
-    "title": "问题标题（中文）",
-    "description": "问题描述（中文）",
+    "title": "问题标题（按 commentLanguage 配置：zh 写中文，en 写英文）",
+    "description": "问题描述（按 commentLanguage 配置：zh 写中文，en 写英文）",
     "contextCode": "相关代码片段（5-10 行）",
     "fix": {
       "code": "修复代码",
-      "explanation": "修复说明（中文）"
+      "explanation": "修复说明（按 commentLanguage 配置：zh 写中文，en 写英文）"
     },
     "references": []
   }
@@ -75,11 +75,11 @@ planner 给你的 focusAreas 是本次审查的具体点。你的主要任务是
 | `type` | ✅ | 问题类型 |
 | `severity` | ✅ | `critical` / `error` / `warning` |
 | `confidence` | ✅ | 0-100 整数。**缺字段 = 验证失败 = 被拒绝**。低于阈值（默认 80）的发现会被过滤掉，不要输出 |
-| `title` | ✅ | 简短中文标题 |
-| `description` | ✅ | 详细中文描述，含根因和影响 |
+| `title` | ✅ | 简短标题（按 commentLanguage 配置：zh 写中文，en 写英文） |
+| `description` | ✅ | 详细描述，含根因和影响（按 commentLanguage 配置） |
 | `contextCode` | ✅ | 来自 diff 的实际代码片段（5-10 行），**不要凭记忆写** |
 | `fix.code` | ✅ | 可落地的修复代码（diff 级） |
-| `fix.explanation` | ✅ | 修复思路，中文 |
+| `fix.explanation` | ✅ | 修复思路（按 commentLanguage 配置：zh 写中文，en 写英文） |
 | `references` | ❌ | 可选。数组，每项 `{ "title": "...", "url": "..." }`。**只在 agent 自己确信该链接对修复这个问题有直接帮助时才填**（例如官方文档锚点、PEP、规范条文）。留空数组或省略字段都行 —— 没填不会触发任何自动推荐。**禁止为了"凑数"贴泛泛的官方文档主页**，那对评审者无价值 |
 
 如果没有任何问题，输出空数组 `[]`。

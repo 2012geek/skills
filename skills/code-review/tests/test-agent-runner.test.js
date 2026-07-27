@@ -67,7 +67,7 @@ describe('AgentRunner review guide injection', () => {
     expect(prompt).toContain('fix.explanation');
   });
 
-  test('omits output-language directive when commentLanguage is en', () => {
+  test('injects English output-language directive when commentLanguage is en', () => {
     const runner = new AgentRunner({});
     const prompt = runner.buildPrompt(
       { definition: 'Base agent instructions.' },
@@ -77,7 +77,9 @@ describe('AgentRunner review guide injection', () => {
       }
     );
 
-    expect(prompt).not.toContain('## Output Language');
+    expect(prompt).toContain('## Output Language');
+    expect(prompt).toContain('English');
+    expect(prompt).not.toContain('简体中文');
   });
 
   test('omits output-language directive when commentLanguage is not set', () => {

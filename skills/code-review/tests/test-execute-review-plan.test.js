@@ -106,4 +106,53 @@ describe('generateAgentPromptsFromPlan (3-phase RBT schema)', () => {
     expect(promptContent).toMatch(/# assert → ValueError migration/);
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
+
+  test('injects Output Language directive from commentLanguage config (zh → 简体中文)', async () => {
+    const reviewer = new GitCodeReviewer({ pr: 7, commentLanguage: 'zh' });
+    const tmpDir = path.join(__dirname, 'fixtures', 'tmp-output-lang-zh');
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.mkdirSync(tmpDir, { recursive: true });
+
+    const { promptFiles } = await reviewer.generateAgentPromptsFromPlan(samplePlan, tmpDir, { prNumber: 7 });
+    const prompt = fs.readFileSync(promptFiles[0].path, 'utf-8');
+
+    // Regression: generateAgentPromptsFromPlan used to bypass buildPrompt and
+    // drop the Output Language directive, so agents wrote issue prose in
+    // English even when commentLanguage=zh. After the fix, the directive
+    // travels through buildPrompt and tells the agent to write 简体中文.
+    expect(prompt).toMatch(/## Output Language/);
+    expect(prompt).toMatch(/简体中文/);
+
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test('injects Output Language directive from commentLanguage config (en → English)', async () => {
+    const reviewer = new GitCodeReviewer({ pr: 7, commentLanguage: 'en' });
+    const tmpDir = path.join(__dirname, 'fixtures', 'tmp-output-lang-en');
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.mkdirSync(tmpDir, { recursive: true });
+
+    const { promptFiles } = await reviewer.generateAgentPromptsFromPlan(samplePlan, tmpDir, { prNumber: 7 });
+    const prompt = fs.readFileSync(promptFiles[0].path, 'utf-8');
+
+    expect(prompt).toMatch(/## Output Language/);
+    expect(prompt).toMatch(/English/);
+    expect(prompt).not.toMatch(/简体中文/);
+
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test('omits Output Language directive when commentLanguage is not set', async () => {
+    const reviewer = new GitCodeReviewer({ pr: 7 });
+    const tmpDir = path.join(__dirname, 'fixtures', 'tmp-output-lang-none');
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.mkdirSync(tmpDir, { recursive: true });
+
+    const { promptFiles } = await reviewer.generateAgentPromptsFromPlan(samplePlan, tmpDir, { prNumber: 7 });
+    const prompt = fs.readFileSync(promptFiles[0].path, 'utf-8');
+
+    expect(prompt).not.toMatch(/## Output Language/);
+
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
 });

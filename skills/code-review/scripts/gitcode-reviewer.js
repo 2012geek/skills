@@ -1220,51 +1220,47 @@ class GitCodeReviewer {
       agentMap.get(rc.agent).push(rc);
     }
 
+    // Build the KB section once — same for all agents (the planner already
+    // filtered relevance).
+    let kbSection = '';
+    if (relevantKb.length > 0) {
+      const blocks = relevantKb.map(r => {
+        const content = loadKnownBugFile(kbDir, r.file);
+        return `### ${r.file}\n\n${content}`;
+      });
+      kbSection = `## 已知 bug 参考\n\n${blocks.join('\n\n')}\n\n`;
+    }
+
     const promptFiles = [];
     let i = 0;
     for (const [agentName, rcs] of agentMap.entries()) {
-      let template;
-      try {
-        template = await agentRunner.loadAgent(agentName);
-      } catch (e) {
-        template = await agentRunner.loadAgent('_generic');
-      }
-
-      const focusLines = [];
-      for (const rc of rcs) {
-        focusLines.push(`- **风险**: ${rc.risk}`);
-        focusLines.push(`  **通过/失败标准**: ${rc.focus}`);
-      }
-
-      let kbSection = '';
-      if (relevantKb.length > 0) {
-        const blocks = relevantKb.map(r => {
-          const content = loadKnownBugFile(kbDir, r.file);
-          return `### ${r.file}\n\n${content}`;
-        });
-        kbSection = `## 已知 bug 参考\n\n${blocks.join('\n\n')}\n\n`;
-      }
-
-      const prompt = [
-        template.definition,
-        '',
-        '---',
-        '',
-        `## 本次审查重点 (focusAreas)`,
-        '',
-        focusLines.join('\n') || '(planner 未指定具体重点，按模板默认职责审查)',
-        '',
+      // Delegate prompt assembly to agentRunner.runAgent → buildPrompt so the
+      // Output Language directive is injected consistently with the legacy
+      // --auto-review path. Plan-specific sections (focusAreas, kbSection,
+      // output target) are passed via context and rendered by buildPrompt.
+      const agentContext = {
+        planMode: true,
+        focusAreas: rcs.map(rc => ({ risk: rc.risk, focus: rc.focus })),
         kbSection,
-        `## 输出`,
-        '',
-        `用 \`Write\` 工具把 JSON 数组写到 \`.tmp/gitcode-review/pr-${opts.prNumber}/issue-${i}.json\`.`,
-        '',
-        '不要创建 Git worktree、不要 fetch 或 clone、不要访问网络、不要写到该路径之外。',
-      ].filter(s => s !== null).join('\n');
+        prNumber: opts.prNumber,
+        issueIndex: i,
+        commentLanguage: (this.config && this.config.codeReview && this.config.codeReview.commentLanguage)
+          || (this.config && this.config.commentLanguage)
+          || null,
+      };
+
+      let result;
+      try {
+        result = await agentRunner.runAgent(agentName, agentContext);
+      } catch (e) {
+        // Unknown agent name → fall back to _generic template, but still via
+        // runAgent so the Output Language directive is injected.
+        result = await agentRunner.runAgent('_generic', agentContext);
+      }
 
       const filename = `prompt-${i}-${agentName}.md`;
       const pPath = path.join(outDir, filename);
-      await fs.writeFile(pPath, prompt, 'utf-8');
+      await fs.writeFile(pPath, result.prompt, 'utf-8');
       promptFiles.push({ agentName, path: pPath });
       i++;
     }

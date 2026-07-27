@@ -158,11 +158,43 @@ class AgentRunner {
       prompt += `**描述**: ${context.issue.description}\n`;
     }
 
+    // Plan-specific focus areas (from planner-first flow). Each entry is a
+    // { risk, focus } pair: the planner named a risk and wrote through/fail
+    // criteria for it. Render both so the agent knows what to verify.
+    if (Array.isArray(context.focusAreas) && context.focusAreas.length > 0) {
+      prompt += `\n\n## 本次审查重点 (focusAreas)\n\n`;
+      for (const item of context.focusAreas) {
+        prompt += `- **风险**: ${item.risk}\n`;
+        prompt += `  **通过/失败标准**: ${item.focus}\n`;
+      }
+      prompt += `\n`;
+    } else if (context.focusAreas === undefined && context.planMode) {
+      prompt += `\n\n## 本次审查重点 (focusAreas)\n\n(planner 未指定具体重点，按模板默认职责审查)\n`;
+    }
+
+    // Plan-specific known-bugs section. The planner filtered knownBugRelevance
+    // to relevant entries; the loader has already materialized their content.
+    if (context.kbSection) {
+      prompt += `\n${context.kbSection}\n`;
+    }
+
+    // Plan-specific output target. The planner-first flow writes per-agent
+    // issue-<i>.json instead of a single combined file.
+    if (context.prNumber !== undefined && context.issueIndex !== undefined) {
+      prompt += `\n## 输出\n\n`;
+      prompt += `用 \`Write\` 工具把 JSON 数组写到 \`.tmp/gitcode-review/pr-${context.prNumber}/issue-${context.issueIndex}.json\`.\n\n`;
+      prompt += `不要创建 Git worktree、不要 fetch 或 clone、不要访问网络、不要写到该路径之外。\n`;
+    }
+
     // Output language directive. CommentFormatter only localizes UI labels
     // (官方参考资料 / 上下文代码 / 修复方案); the issue title/description/
     // fix.explanation are emitted verbatim from agent output. To produce
     // Chinese review comments end-to-end, the agent must write these fields
     // in Chinese at source.
+    //
+    // This directive is the single source of truth for issue prose language.
+    // Template annotations like "（中文）" in _generic.md are hints only;
+    // this runtime directive overrides them.
     const language = (context.commentLanguage || '').toString().toLowerCase();
     if (language === 'zh' || language === 'cn' || language === 'chinese' || language === '中文') {
       prompt += `\n\n## Output Language\n\n`;
@@ -170,6 +202,11 @@ class AgentRunner {
       prompt += `Use technical Chinese common in ML / RL / VLA / robotics contexts (e.g. 张量, 梯度, 微调, 推理, 数据加载, 损失计算). `;
       prompt += `Keep \`file\`, \`line\`, \`contextCode\`, and \`fix.code\` fields as-is — paths and code are language-neutral. `;
       prompt += `Do not translate identifier names, error messages, or commit hashes inside \`contextCode\`/\`fix.code\`; only the prose fields become Chinese.\n`;
+    } else if (language === 'en' || language === 'english' || language === '英文') {
+      prompt += `\n\n## Output Language\n\n`;
+      prompt += `Write the \`title\`, \`description\`, and \`fix.explanation\` fields in **English**. `;
+      prompt += `Keep \`file\`, \`line\`, \`contextCode\`, and \`fix.code\` fields as-is — paths and code are language-neutral. `;
+      prompt += `Do not translate identifier names, error messages, or commit hashes inside \`contextCode\`/\`fix.code\`; only the prose fields become English.\n`;
     }
 
     return prompt;
