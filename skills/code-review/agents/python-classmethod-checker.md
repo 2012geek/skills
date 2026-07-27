@@ -116,7 +116,9 @@ def from_config(cls, config):
     "code": "def is_next_pred_need_obs(self) -> bool:\n    return len(self._action_queue) == 0",
     "explanation": "将 @classmethod 改为实例方法，使用 self 访问实例变量"
   },
-  "referenceCategories": ["python_dataclass"]
+  "references": [
+    { "title": "PEP 557 - Data Classes", "url": "https://peps.python.org/pep-0557/" }
+  ]
 }
 ```
 
@@ -133,7 +135,7 @@ def from_config(cls, config):
 | contextCode | string | 是 | 上下文代码 |
 | fix | object | 是 | 修复方案（code + explanation） |
 | confidence | number | 是 | 置信度 0-100。**缺字段 = 验证失败 = 被拒绝**。低于阈值（默认 80）的不要输出 |
-| referenceCategories | array | 否 | 推荐的文档类别数组，系统将自动填充对应的官方文档链接 |
+| references | array | 否 | `{title, url}` 数组。只在确信该链接对修复有直接帮助时才填 |
 
 ## 特殊情况
 

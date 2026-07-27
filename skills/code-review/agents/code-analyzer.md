@@ -152,7 +152,9 @@ color: orange
         "code": "修复代码",
         "explanation": "修复说明"
       },
-      "referenceCategories": ["python_dataclass", "python_mutable_default"]
+      "references": [
+        { "title": "PEP 557 - Data Classes", "url": "https://peps.python.org/pep-0557/" }
+      ]
     }
   ]
 }
@@ -171,7 +173,7 @@ color: orange
 | description | string | 是 | 详细描述 |
 | contextCode | string | 是 | 上下文代码 |
 | fix | object | 是 | 修复方案（code + explanation） |
-| referenceCategories | array | 否 | 推荐的文档类别数组，系统将自动填充对应的官方文档链接 |
+| references | array | 否 | `{title, url}` 数组。只在确信该链接对修复有直接帮助时才填 |
 
 ## 置信度标准
 

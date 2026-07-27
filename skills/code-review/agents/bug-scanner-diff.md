@@ -176,7 +176,9 @@ color: red
         "code": "修复代码",
         "explanation": "修复说明"
       },
-      "referenceCategories": ["python_dataclass"]
+      "references": [
+        { "title": "PEP 557 - Data Classes", "url": "https://peps.python.org/pep-0557/" }
+      ]
     }
   ]
 }
@@ -196,7 +198,7 @@ color: red
 | `contextCode` | ✅ | 来自 diff 的实际代码片段（5-10 行），不要凭记忆写 |
 | `fix.code` | ✅ | 可落地的修复代码 |
 | `fix.explanation` | ✅ | 修复思路 |
-| `referenceCategories` | ❌ | 可选，文档类别数组 |
+| `references` | ❌ | 可选。数组，每项 `{title, url}`。只在确信该链接对修复有直接帮助时才填。留空不会触发任何自动推荐 |
 
 ## 示例
 

@@ -1,73 +1,12 @@
 /**
  * 评论格式化器
- * 负责将问题格式化为 GitCode PR 评论，添加 AI 签名和官方参考资料
+ * 负责将问题格式化为 GitCode PR 评论，添加 AI 签名。
+ *
+ * 参考资料归属权在 agent 手里 —— agent 在 issue.references 里
+ * 写 `{title, url}` 数组，formatter 只负责渲染。本模块不再做
+ * 关键词猜测式推荐（历史 bug：文档漂移 issue 因为正文出现 "file"
+ * 一词被推荐了 Python os.path 文档，与 issue 主题无关）。
  */
-
-// 官方参考资料库 - 根据问题类型自动推荐
-const OFFICIAL_REFERENCES = {
-  // Python 相关
-  'argparse': [
-    { title: 'Python argparse Documentation', url: 'https://docs.python.org/3/library/argparse.html' },
-    { title: 'argparse - Parser for command-line options (Python)', url: 'https://docs.python.org/3/howto/argparse.html' }
-  ],
-  'bool': [
-    { title: 'Why type=bool doesn\'t work in argparse - StackOverflow', url: 'https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse' }
-  ],
-  'shebang': [
-    { title: 'Wiki: Shebang (Unix)', url: 'https://en.wikipedia.org/wiki/Shebang_(Unix)' },
-    { title: 'PEP 394 - Python script shebang', url: 'https://peps.python.org/pep-0394/' }
-  ],
-  'file-io': [
-    { title: 'Python os.path documentation', url: 'https://docs.python.org/3/library/os.path.html' },
-    { title: 'Python File I/O best practices', url: 'https://docs.python.org/3/tutorial/inputoutput.html#reading-and-writing-files' }
-  ],
-
-  // JavaScript/Node.js 相关
-  'javascript': [
-    { title: 'MDN Web Docs - JavaScript', url: 'https://developer.mozilla.org/en-US/docs/Web/JavaScript' }
-  ],
-  'async': [
-    { title: 'MDN - Async functions', url: 'https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/async_function' },
-    { title: 'JavaScript.info - Promises, async/await', url: 'https://javascript.info/async' }
-  ],
-
-  // 安全相关
-  'security': [
-    { title: 'OWASP Top 10', url: 'https://owasp.org/www-project-top-ten/' },
-    { title: 'CWE - Common Weakness Enumeration', url: 'https://cwe.mitre.org/' }
-  ],
-  'sql-injection': [
-    { title: 'OWASP SQL Injection', url: 'https://owasp.org/www-community/attacks/SQL_Injection' }
-  ],
-  'xss': [
-    { title: 'OWASP XSS (Cross-Site Scripting)', url: 'https://owasp.org/www-community/attacks/xss/' }
-  ],
-
-  // 通用编程
-  'error-handling': [
-    { title: 'Clean Code - Error Handling', url: 'https://github.com/ryanmcdermott/clean-code-javascript#error-handling' }
-  ],
-
-  // Python dataclass 相关
-  'python_dataclass': [
-    { title: 'Python dataclasses 官方文档', url: 'https://docs.python.org/3/library/dataclasses.html' },
-    { title: 'PEP 557 - Data Classes', url: 'https://peps.python.org/pep-0557/' }
-  ],
-  'python_threading': [
-    { title: 'Python threading 官方文档', url: 'https://docs.python.org/3/library/threading.html' },
-    { title: 'Python threading.Lock() 说明', url: 'https://docs.python.org/3/library/threading.html#lock-objects' }
-  ],
-  'python_field': [
-    { title: 'dataclasses.field() 官方文档', url: 'https://docs.python.org/3/library/dataclasses.html#dataclasses.field' }
-  ],
-  'python_async': [
-    { title: 'Python asyncio 官方文档', url: 'https://docs.python.org/3/library/asyncio.html' }
-  ],
-  'python_mutable_default': [
-    { title: 'Python FAQ: Mutable Default Arguments', url: 'https://docs.python.org/3/faq/programming.html#why-are-default-values-shared-between-objects' },
-    { title: 'Effective Python: Avoid Mutable Defaults', url: 'https://effectivepython.com/2015/02/11/avoid-mutable-defaults/' }
-  ]
-};
 
 class CommentFormatter {
   constructor(config) {
@@ -114,80 +53,25 @@ class CommentFormatter {
   }
 
   /**
-   * 根据问题类型和内容自动添加官方参考资料
+   * 添加参考资料。
+   *
+   * 参考资料只来自 issue.references —— agent 在写 issue 时自己决定
+   * 是否需要附带参考链接。formatter 不再做关键词匹配式的自动推荐
+   * （详见类注释）。
+   *
+   * 如果 issue.references 为空或缺失，本方法直接返回 body，不附加任何内容。
    */
-  addOfficialReferences(issue, body) {
-    // 如果用户提供了完整的 references（包括 URL），优先使用
-    if (issue.references && issue.references.length > 0) {
-      body += `**${this.label('officialReferences')}**:\n`;
-      const uniqueRefs = this.deduplicateRefs(issue.references);
-      for (const ref of uniqueRefs) {
-        body += `- [${ref.title}](${ref.url})\n`;
-      }
-      body += `\n`;
+  addReferences(issue, body) {
+    if (!issue.references || issue.references.length === 0) {
       return body;
     }
 
-    const refs = [];
-
-    // 1. 优先使用 Agent 推荐的类别
-    if (issue.referenceCategories && Array.isArray(issue.referenceCategories)) {
-      for (const category of issue.referenceCategories) {
-        if (OFFICIAL_REFERENCES[category]) {
-          refs.push(...OFFICIAL_REFERENCES[category]);
-        }
-      }
+    body += `**${this.label('references')}**:\n`;
+    const uniqueRefs = this.deduplicateRefs(issue.references);
+    for (const ref of uniqueRefs) {
+      body += `- [${ref.title}](${ref.url})\n`;
     }
-
-    // 2. 如果没有类别推荐，使用关键词匹配作为后备
-    if (refs.length === 0) {
-      const content = (issue.title + issue.description + (issue.contextCode || '')).toLowerCase();
-
-      // Python argparse / bool 相关
-      if (content.includes('argparse') || content.includes('type=bool') || content.includes('add_argument')) {
-        refs.push(...OFFICIAL_REFERENCES.argparse);
-      }
-      if (content.includes('bool') && content.includes('argparse')) {
-        refs.push(...OFFICIAL_REFERENCES.bool);
-      }
-
-      // Shebang 相关
-      if (content.includes('shebang') || content.includes('#!')) {
-        refs.push(...OFFICIAL_REFERENCES.shebang);
-      }
-
-      // 文件 I/O 相关
-      if (content.includes('file') || content.includes('path') || content.includes('os.path') || content.includes('open(')) {
-        refs.push(...OFFICIAL_REFERENCES['file-io']);
-      }
-
-      // 安全相关
-      if (issue.type === 'security' || content.includes('sql') || content.includes('inject') || content.includes('xss')) {
-        if (content.includes('sql') && content.includes('inject')) {
-          refs.push(...OFFICIAL_REFERENCES['sql-injection']);
-        } else if (content.includes('xss')) {
-          refs.push(...OFFICIAL_REFERENCES.xss);
-        } else {
-          refs.push(...OFFICIAL_REFERENCES.security);
-        }
-      }
-
-      // JavaScript 异步相关
-      if (content.includes('async') || content.includes('await') || content.includes('promise')) {
-        refs.push(...OFFICIAL_REFERENCES.async);
-      }
-    }
-
-    // 3. 添加匹配到的参考资料
-    if (refs.length > 0) {
-      body += `**${this.label('officialReferences')}**:\n`;
-      const uniqueRefs = this.deduplicateRefs(refs);
-      for (const ref of uniqueRefs) {
-        body += `- [${ref.title}](${ref.url})\n`;
-      }
-      body += `\n`;
-    }
-
+    body += `\n`;
     return body;
   }
 
@@ -233,17 +117,8 @@ class CommentFormatter {
       body += `\n`;
     }
 
-    // 添加官方参考资料（如果没有用户提供）
-    body = this.addOfficialReferences(issue, body);
-
-    // 用户提供的参考资料
-    if (issue.references && issue.references.length > 0) {
-      body += `**${this.label('references')}**:\n`;
-      for (const ref of issue.references) {
-        body += `- [${ref.title}](${ref.url})\n`;
-      }
-      body += `\n`;
-    }
+    // 参考资料由 agent 通过 issue.references 显式提供
+    body = this.addReferences(issue, body);
 
     // 添加 AI 签名
     body += this.aiSignature;

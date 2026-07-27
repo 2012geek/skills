@@ -61,7 +61,7 @@ planner 给你的 focusAreas 是本次审查的具体点。你的主要任务是
       "code": "修复代码",
       "explanation": "修复说明（中文）"
     },
-    "referenceCategories": []
+    "references": []
   }
 ]
 ```
@@ -80,7 +80,7 @@ planner 给你的 focusAreas 是本次审查的具体点。你的主要任务是
 | `contextCode` | ✅ | 来自 diff 的实际代码片段（5-10 行），**不要凭记忆写** |
 | `fix.code` | ✅ | 可落地的修复代码（diff 级） |
 | `fix.explanation` | ✅ | 修复思路，中文 |
-| `referenceCategories` | ❌ | 可选 |
+| `references` | ❌ | 可选。数组，每项 `{ "title": "...", "url": "..." }`。**只在 agent 自己确信该链接对修复这个问题有直接帮助时才填**（例如官方文档锚点、PEP、规范条文）。留空数组或省略字段都行 —— 没填不会触发任何自动推荐。**禁止为了"凑数"贴泛泛的官方文档主页**，那对评审者无价值 |
 
 如果没有任何问题，输出空数组 `[]`。
 

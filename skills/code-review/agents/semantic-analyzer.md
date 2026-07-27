@@ -200,7 +200,6 @@ for key in input_features:                    # 第 45 行
         "code": "修复后的代码",
         "explanation": "修复的思路和原理"
       },
-      "referenceCategories": ["python_dataclass"],
       "references": [
         {
           "title": "相关文档标题",
@@ -225,8 +224,7 @@ for key in input_features:                    # 第 45 行
 | description | string | 是 | 详细描述 |
 | contextCode | string | 是 | 上下文代码 |
 | fix | object | 是 | 修复方案 |
-| referenceCategories | array | 否 | 推荐的文档类别数组，系统将自动填充对应的官方文档链接 |
-| references | array | 否 | 直接提供的参考资料（包含 title 和 url），优先级高于 referenceCategories |
+| references | array | 否 | 直接提供的参考资料（包含 title 和 url）。只在确信该链接对修复有直接帮助时才填，留空不会触发任何自动推荐 |
 
 ## 置信度标准
 
