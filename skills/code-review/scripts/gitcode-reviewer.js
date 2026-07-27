@@ -1207,24 +1207,44 @@ class GitCodeReviewer {
     const kbDir = path.join(__dirname, '..', 'known-bugs');
     const relevantKb = filterRelevance(plan.knownBugRelevance);
 
+    // Derive agents from riskCoverage[] — group by agent name.
+    // Each agent gets the union of risks it must cover, with the planner's
+    // through/fail focus text per risk.
+    const coverage = Array.isArray(plan.riskCoverage) ? plan.riskCoverage : [];
+    const agentMap = new Map();
+    for (const rc of coverage) {
+      if (!rc || typeof rc.agent !== 'string') continue;
+      if (!agentMap.has(rc.agent)) {
+        agentMap.set(rc.agent, []);
+      }
+      agentMap.get(rc.agent).push(rc);
+    }
+
     const promptFiles = [];
-    const agents = plan.reviewPlan.agents || [];
-    for (let i = 0; i < agents.length; i++) {
-      const agentSpec = agents[i];
+    let i = 0;
+    for (const [agentName, rcs] of agentMap.entries()) {
       let template;
       try {
-        template = await agentRunner.loadAgent(agentSpec.name);
+        template = await agentRunner.loadAgent(agentName);
       } catch (e) {
         template = await agentRunner.loadAgent('_generic');
       }
-      const focusAreas = (agentSpec.focusAreas || []).map(f => `- ${f}`).join('\n');
-      const injectFiles = (agentSpec.injectKnownBugs || [])
-        .filter(f => relevantKb.some(r => r.file === f));
+
+      const focusLines = [];
+      for (const rc of rcs) {
+        focusLines.push(`- **风险**: ${rc.risk}`);
+        focusLines.push(`  **通过/失败标准**: ${rc.focus}`);
+      }
+
       let kbSection = '';
-      if (injectFiles.length > 0) {
-        const blocks = injectFiles.map(f => `### ${f}\n\n${loadKnownBugFile(kbDir, f)}`);
+      if (relevantKb.length > 0) {
+        const blocks = relevantKb.map(r => {
+          const content = loadKnownBugFile(kbDir, r.file);
+          return `### ${r.file}\n\n${content}`;
+        });
         kbSection = `## 已知 bug 参考\n\n${blocks.join('\n\n')}\n\n`;
       }
+
       const prompt = [
         template.definition,
         '',
@@ -1232,7 +1252,7 @@ class GitCodeReviewer {
         '',
         `## 本次审查重点 (focusAreas)`,
         '',
-        focusAreas || '(planner 未指定具体重点，按模板默认职责审查)',
+        focusLines.join('\n') || '(planner 未指定具体重点，按模板默认职责审查)',
         '',
         kbSection,
         `## 输出`,
@@ -1242,10 +1262,11 @@ class GitCodeReviewer {
         '不要创建 Git worktree、不要 fetch 或 clone、不要访问网络、不要写到该路径之外。',
       ].filter(s => s !== null).join('\n');
 
-      const filename = `prompt-${i}-${agentSpec.name}.md`;
+      const filename = `prompt-${i}-${agentName}.md`;
       const pPath = path.join(outDir, filename);
       await fs.writeFile(pPath, prompt, 'utf-8');
-      promptFiles.push({ agentName: agentSpec.name, path: pPath });
+      promptFiles.push({ agentName, path: pPath });
+      i++;
     }
     return { promptFiles };
   }

@@ -81,8 +81,8 @@ async function buildPlannerPrompt(ctx, kbDir) {
   sections.push(
     '## 可用 agent 模板',
     '',
-    '下面是本 skill 提供的 agent 模板索引。你可以在 `reviewPlan.agents[i].name` 中填其中之一，'
-      + '也可以填一个不在列表里的名字（脚本会用通用模板生成 prompt，你必须在 `focusAreas` 里写明检查点）。',
+    '下面是本 skill 提供的 agent 模板索引。你可以在 `riskCoverage[].agent` 中填其中之一，'
+      + '也可以填一个不在列表里的名字（脚本会用通用模板生成 prompt，你必须在 `focus` 里写明通过/失败标准）。',
     '',
     ...(ctx.agentTemplateIndex || []).map(t => `## ${t.name} (${t.model})\n${t.description}\n`),
     '',

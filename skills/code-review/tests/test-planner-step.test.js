@@ -21,12 +21,19 @@ describe('planner step (step1_Plan)', () => {
     const reviewer = new GitCodeReviewer({ pr: 7, commentLanguage: 'en' });
     const fakePlan = {
       proceed: true,
-      summary: 'test',
+      summary: 'PR adds a function f to module a.py with simple pass body',
       changeType: 'code',
-      riskAreas: ['x'],
-      reviewPlan: { agents: [{ name: 'a', model: 'sonnet', focusAreas: [], injectKnownBugs: [], rationale: 'r' }], nonAgentTasks: [], skippedAgents: [] },
+      risks: ['function f has no return statement — callers may get None unexpectedly'],
+      riskCoverage: [
+        {
+          risk: 'function f has no return statement — callers may get None unexpectedly',
+          agent: 'bug-scanner-diff',
+          focus: 'Pass: function f has explicit return. Fail: any path through f returns None implicitly. Report the missing return at file:line.',
+        },
+      ],
+      nonAgentTasks: [],
+      skippedAgents: [],
       knownBugRelevance: [],
-      confidence: 80,
       openQuestions: [],
     };
     const tmpDir = path.join(__dirname, 'fixtures', 'tmp-plan-test');
