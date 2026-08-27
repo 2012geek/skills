@@ -289,10 +289,13 @@ class AgentRunner {
       `- Report only high-confidence defects introduced or exposed by this PR.\n` +
       `- A finding must identify a changed/modified line, a concrete trigger, and observable impact.\n` +
       `- Keep the final list short; do not emit one finding per role for the same root cause.\n`;
-    const result = this.buildPrompt({ name: 'multi-reviewer', model: 'sonnet', definition }, context);
+    // Model selection belongs to the headless command (VLAF_AGENT_CMD), not
+    // the skill. Keep the manifest metadata neutral so callers can choose
+    // Claude/another model without the skill imposing a default.
+    const result = this.buildPrompt({ name: 'multi-reviewer', model: 'inherit', definition }, context);
     return {
       agent: 'multi-reviewer',
-      model: 'sonnet',
+      model: 'inherit',
       prompt: result,
       execute: async (claude) => this.executeAgent({ name: 'multi-reviewer', definition }, context, claude),
     };

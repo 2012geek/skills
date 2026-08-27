@@ -45,6 +45,9 @@ returns one deduplicated JSON array, avoiding three Claude CLI cold starts:
 
 Execute the generated prompt with one headless agent. It returns only a JSON array to its manifest `issuePath`. The prompt contains the complete changed-file manifest plus bounded diff samples and line-numbered after-state excerpts. Omitted files are named explicitly so the reviewer does not infer findings from unseen content. Planner-assisted/deep review may still generate multiple independent prompts.
 
+The skill does not select a model. Configure the headless executable and model
+outside the skill with `VLAF_AGENT_CMD` (for example, `claude -p --model haiku ...`).
+
 The default budgets are 72 KiB of diffs per reviewer, 24 KiB per file, and 8 KiB of after-state context. Headless CI can tune them with `VLAF_REVIEW_DIFF_BUDGET`, `VLAF_REVIEW_FILE_DIFF_BUDGET`, and `VLAF_REVIEW_CONTEXT_BUDGET`.
 
 ### Planner-assisted review
