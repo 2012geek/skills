@@ -13,6 +13,7 @@ Then use from any project:
 
 ```
 /gitcode-tools:code-review 46
+/gitcode-tools:vlafactory-code-review 46
 /gitcode-tools:ci-repair 123
 /gitcode-tools:pr
 /gitcode-tools:bot
@@ -24,6 +25,7 @@ Then use from any project:
 | Skill | Description | Invoke |
 |-------|-------------|--------|
 | code-review | Multi-agent PR code review with bug scanning, security detection, semantic analysis | `/gitcode-tools:code-review 46` |
+| vlafactory-code-review | Focused VLA Factory review with bounded parallel reviewers and project-specific invariants | `/gitcode-tools:vlafactory-code-review 46` |
 | code-review-repair | Auto-fix PR review comments using LLM-generated patches | `/gitcode-tools:code-review-repair` |
 | ci-repair | Auto-repair CI failures with iterative fixing until pass | `/gitcode-tools:ci-repair 123` |
 | pr | Create PRs with auto-generated descriptions from diffs | `/gitcode-tools:pr` |
@@ -95,6 +97,7 @@ Each skill can also use a `config.json` in your project root (alternative to env
 skills/
 ├── using-gitcode-tools/      # entry guide
 ├── code-review/              # multi-agent code review
+├── vlafactory-code-review/   # focused VLA Factory code review
 ├── code-review-repair/       # review comment repair
 ├── ci-rerepair/              # CI auto-repair
 ├── pr/                       # PR creation & descriptions

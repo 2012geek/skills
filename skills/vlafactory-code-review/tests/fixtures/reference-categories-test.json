@@ -1,0 +1,17 @@
+[
+  {
+    "file": "src/lerobot/async_inference/latency_prober.py",
+    "line": 14,
+    "type": "logic_error",
+    "severity": "warning",
+    "confidence": 85,
+    "title": "dataclass 中使用可变默认值 threading.Lock()",
+    "description": "在 @dataclass 中使用 `lock: threading.Lock = threading.Lock()` 是一个 Python 反模式。默认值在类定义时创建一次，所有实例将共享同一个锁对象。",
+    "contextCode": "@dataclass\nclass LatencyRecord:\n    lock: threading.Lock = threading.Lock()",
+    "fix": {
+      "code": "lock: threading.Lock = field(default_factory=threading.Lock)",
+      "explanation": "使用 field(default_factory=threading.Lock) 确保每个实例获得独立的锁。"
+    },
+    "referenceCategories": ["python_dataclass", "python_mutable_default", "python_threading"]
+  }
+]
