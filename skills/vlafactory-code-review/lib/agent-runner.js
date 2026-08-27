@@ -272,6 +272,32 @@ class AgentRunner {
     };
   }
 
+  /** Build one prompt covering several independent roles in one invocation. */
+  async runCombinedAgent(agentNames, context) {
+    const names = Array.isArray(agentNames) ? agentNames : [];
+    const agents = await Promise.all(names.map(name => this.loadAgent(name)));
+    if (agents.length === 0) throw new Error('combined reviewer requires at least one agent');
+    const roleSections = agents.map(agent =>
+      `## Reviewer role: ${agent.name}\n\n${agent.definition}`
+    ).join('\n\n');
+    const definition = `# Multi-role VLA Factory reviewer\n\n` +
+      `Perform each reviewer role below as an independent internal pass. ` +
+      `Do not let an earlier pass's conclusions anchor later passes. After all ` +
+      `passes, merge and deduplicate findings that refer to the same root cause.\n\n` +
+      roleSections + '\n\n' +
+      `## Combined-review rules\n\n` +
+      `- Report only high-confidence defects introduced or exposed by this PR.\n` +
+      `- A finding must identify a changed/modified line, a concrete trigger, and observable impact.\n` +
+      `- Keep the final list short; do not emit one finding per role for the same root cause.\n`;
+    const result = this.buildPrompt({ name: 'multi-reviewer', model: 'sonnet', definition }, context);
+    return {
+      agent: 'multi-reviewer',
+      model: 'sonnet',
+      prompt: result,
+      execute: async (claude) => this.executeAgent({ name: 'multi-reviewer', definition }, context, claude),
+    };
+  }
+
   /**
    * 构建 prompt
    */

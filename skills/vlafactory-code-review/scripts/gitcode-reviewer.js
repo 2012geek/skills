@@ -1014,7 +1014,7 @@ class GitCodeReviewer {
       console.log(`  📘 Review guide: ${this.config.codeReview.reviewGuide.path}`);
     }
 
-    // Step 4: 并行审查（生成所有 prompts）
+    // Step 4: 单进程多角色审查（生成一个 prompt）
     const agentResults = await this.step4_GenerateAllPrompts(context, summary);
 
     let outputPath = null;
@@ -1066,11 +1066,9 @@ class GitCodeReviewer {
     };
   }
 
-  /**
-   * 🔧 方案1: 生成所有 agents 的 prompts（用于自动审查模式）
-   */
+  /** 生成普通自动审查的单个 multi-reviewer prompt。 */
   async step4_GenerateAllPrompts(context, summary) {
-    console.log('生成所有 agent prompts...');
+    console.log('生成单个 multi-reviewer prompt...');
 
     const agentContext = {
       context,
@@ -1080,17 +1078,10 @@ class GitCodeReviewer {
     };
     const agentNames = selectReviewAgentNames(context);
 
-    const agents = [];
-    for (const agentName of agentNames) {
-      const result = await this.runner.runAgent(agentName, agentContext);
-      agents.push({
-        name: agentName,
-        prompt: result.prompt,
-        model: result.model
-      });
-    }
+    const result = await this.runner.runCombinedAgent(agentNames, agentContext);
+    const agents = [{ name: result.agent, prompt: result.prompt, model: result.model }];
 
-    console.log(`  ✅ 已生成 ${agents.length} 个 prompts\n`);
+    console.log(`  ✅ 已生成 1 个 prompt（内部覆盖 ${agentNames.length} 个 reviewer 角色）\n`);
 
     return {
       pr: {
