@@ -128,4 +128,67 @@ describe('AgentRunner review guide injection', () => {
     expect(prompt).toContain('Return `[]`');
     expect(prompt).toContain('`contextCode`, `fix`, and `references` are optional');
   });
+
+  test('bounds routine reviewer prompts and routes documentation out of code roles', () => {
+    const runner = new AgentRunner({});
+    const largePatch = label => Array.from(
+      { length: 5000 },
+      (_, index) => `+${label}-changed-line-${index + 1}`
+    ).join('\n');
+    const files = [
+      {
+        filename: 'docs/architecture/large.md', status: 'added', additions: 5000,
+        deletions: 0, patch: largePatch('DOC-ONLY')
+      },
+      {
+        filename: 'src/model.py', status: 'modified', additions: 5000,
+        deletions: 0, patch: largePatch('MODEL')
+      },
+      {
+        filename: 'scripts/ci/daemon.py', status: 'modified', additions: 5000,
+        deletions: 0, patch: largePatch('DAEMON')
+      },
+      {
+        filename: 'test/test_model.py', status: 'modified', additions: 5000,
+        deletions: 0, patch: largePatch('TEST')
+      },
+    ];
+
+    for (const name of ['bug-scanner-diff', 'code-analyzer', 'semantic-analyzer']) {
+      const prompt = runner.buildPrompt(
+        { name, definition: 'Perform the assigned review.' },
+        { context: { pr: { number: 22, title: 'large PR', body: '' }, files } }
+      );
+      expect(Buffer.byteLength(prompt, 'utf8') < 96 * 1024).toBe(true);
+      expect(prompt).toContain('docs/architecture/large.md'); // manifest remains complete
+      expect(prompt).not.toContain('DOC-ONLY-changed-line-1');
+      expect(prompt).toContain('[middle of this diff omitted by prompt budget]');
+      expect(prompt).toContain('do not infer findings from omitted content');
+    }
+  });
+
+  test('routes documentation content to documentation specialists', () => {
+    const runner = new AgentRunner({});
+    const prompt = runner.buildPrompt(
+      { name: 'en-cn-parity-checker', definition: 'Compare documentation.' },
+      {
+        context: {
+          pr: { number: 2, title: 'docs', body: '' },
+          files: [
+            {
+              filename: 'README.md', status: 'modified', additions: 1,
+              deletions: 0, patch: '@@ -1 +1 @@\n+documented-command --new'
+            },
+            {
+              filename: 'src/main.py', status: 'modified', additions: 1,
+              deletions: 0, patch: '@@ -1 +1 @@\n+run_new_command()'
+            },
+          ]
+        }
+      }
+    );
+
+    expect(prompt).toContain('+documented-command --new');
+    expect(prompt).not.toContain('+run_new_command()');
+  });
 });

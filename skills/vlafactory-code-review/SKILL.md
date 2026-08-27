@@ -41,7 +41,9 @@ This generates a manifest and one prompt for each orthogonal default reviewer:
 
 `bug-scanner-diff-2` is an optional independent pass for an explicitly requested deep review; it is not part of the normal path.
 
-Execute generated prompts in bounded parallelism. Each agent returns only a JSON array to its manifest `issuePath`. The prompt contains the complete diff; context reviewers additionally receive line-numbered after-state excerpts around changed lines.
+Execute generated prompts in bounded parallelism. Each agent returns only a JSON array to its manifest `issuePath`. Prompts contain the complete changed-file manifest plus role-routed diff samples under a bounded byte budget; context reviewers additionally receive bounded, line-numbered after-state excerpts. Omitted files are named explicitly so reviewers do not infer findings from unseen content.
+
+The default budgets are 72 KiB of diffs per reviewer, 24 KiB per file, and 8 KiB of after-state context. Headless CI can tune them with `VLAF_REVIEW_DIFF_BUDGET`, `VLAF_REVIEW_FILE_DIFF_BUDGET`, and `VLAF_REVIEW_CONTEXT_BUDGET`.
 
 ### Planner-assisted review
 
